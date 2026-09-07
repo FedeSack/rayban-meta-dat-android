@@ -51,8 +51,13 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         FrameSink(
             onPresented = { ptsUs, receivedMs ->
                 val now = SystemClock.elapsedRealtime()
+                val reading = Latency.reading(ptsUs, now, receivedMs)
                 _state.update {
-                    it.copy(latencyMs = Latency.millis(ptsUs, now, receivedMs), hasFrame = true)
+                    it.copy(
+                        latencyMs = reading.millis,
+                        latencyMode = reading.mode,
+                        hasFrame = true,
+                    )
                 }
             },
             onFirstFrame = { _state.update { it.copy(hasFrame = true) } },
@@ -128,6 +133,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 session = DeviceSessionState.IDLE,
                 stream = StreamState.STOPPED,
                 latencyMs = null,
+                latencyMode = null,
                 hasFrame = false,
             )
         }
@@ -238,7 +244,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         current
             .addCamera(
                 StreamConfiguration(
-                    videoQuality = VideoQuality.MEDIUM,
+                    videoQuality = VideoQuality.HIGH,
                     frameRate = 24,
                     compressVideo = true,
                 ),
@@ -297,7 +303,12 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         camera = null
         stream = null
         _state.update {
-            it.copy(stream = StreamState.STOPPED, latencyMs = null, hasFrame = false)
+            it.copy(
+                stream = StreamState.STOPPED,
+                latencyMs = null,
+                latencyMode = null,
+                hasFrame = false,
+            )
         }
     }
 

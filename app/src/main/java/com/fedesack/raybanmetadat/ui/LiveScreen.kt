@@ -4,8 +4,8 @@ import android.view.Surface
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
@@ -18,7 +18,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.sp
 import com.fedesack.raybanmetadat.AppState
+import com.fedesack.raybanmetadat.LatencyMode
 import com.meta.wearable.dat.camera.types.StreamState
 
 @Composable
@@ -63,15 +65,29 @@ fun LiveScreen(
                 textAlign = TextAlign.Center,
             )
         }
-        Text(
-            text = state.latencyMs?.let { "$it ms" } ?: "— ms",
-            style = MaterialTheme.typography.labelLarge,
+        Column(
             modifier =
                 Modifier
                     .offset(x = DatTokens.latencyX, y = DatTokens.latencyY)
                     .background(DatTokens.latencyFill, RoundedCornerShape(DatTokens.latencyRadius))
                     .padding(horizontal = DatTokens.latencyPadH, vertical = DatTokens.latencyPadV),
-        )
+        ) {
+            Text(
+                text = state.latencyMs?.let { "$it ms" } ?: "— ms",
+                style = MaterialTheme.typography.labelLarge,
+            )
+            if (state.latencyMs != null && state.latencyMode == LatencyMode.PIPELINE) {
+                Text(
+                    text = "pipeline",
+                    style =
+                        MaterialTheme.typography.labelMedium.copy(
+                            color = DatTokens.muted,
+                            fontSize = 11.sp,
+                            lineHeight = 14.sp,
+                        ),
+                )
+            }
+        }
         state.message?.let {
             Text(
                 text = it,
