@@ -65,11 +65,24 @@ Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayb
 - `videoQuality` — `HIGH` (default) / `MEDIUM` / `LOW`. Se pasa a `StreamConfiguration.videoQuality`.
 - `frameRate` — `15` / `24` (default) / `30`. Se pasa a `StreamConfiguration.frameRate`.
 - `preferSharpness` — hint persistido (off). Meta: a menor resolución el preview puede verse más nítido si Bluetooth comprime. No cambia solo el stream; Federico elige quality/fps. Se loguea al Start.
+- `murdokuHqCapture` — default **off**. Modo Murdoku / HQ capture para un solver externo (bot). No es HUD de baja latencia. Ver abajo.
 - Si el stream está live, cambiar quality/fps hace stop+restart limpio. Si no hay sesión STARTED, el mensaje es **Stop and Start to apply**.
 - `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
 - `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
 - `gazeBridge` / `voiceAssist` — stubs, no-op hasta cablearlos. No hay producto gaze/Windows en esta app.
 - `voiceDevMode` — stub (off). Más adelante enruta voz→agente de código. No es Meta Hey-wake ni STT. Chip **Dev mode** en Connect/Live cuando está on.
+
+## Modo Murdoku (HQ capture)
+
+`murdokuHqCapture` (default off). Captura HQ para un solver externo. Federico usa las lentes para resolver Murdoku/Sudoku; el tablet no necesita preview de baja latencia, necesita el frame más limpio posible.
+
+Cuando el flag está **on**:
+
+- `StreamConfiguration` efectivo: `VideoQuality.HIGH` (720×1280) y `frameRate = 15`, sin mutar los quality/fps guardados. Al apagar el flag, el live vuelve a HIGH/24 (o lo que haya elegido Federico).
+- Tradeoff Bluetooth Classic de Meta: la radio comprime por frame. Pedir menor fps (el piso de la escalera automática es 15) suele dar más bits por still y menos blur. HIGH se mantiene porque es el tope del API (`LOW` / `MEDIUM` / `HIGH`). `compressVideo` sigue en `true` para no romper el path HEVC → `Surface` del live.
+- Stills (v1): `Stream.capturePhoto()` → `PhotoData.HEIC` o `PhotoData.Bitmap`. Fallback: último `VideoFrame` YUV de `videoStream` (no se inventan APIs). JPEG 95 en MediaStore `Pictures/RaybanDat` o `files/captures` + FileProvider.
+- UI: entrada **Modo Murdoku** en Connect; en Live, chip `Murdoku HQ`, botón **Capturar tablero**, galería de las últimas 8 y share/export (`ACTION_SEND`).
+- El modo live con el flag **off** no cambia: preview + Start/Stop como antes.
 
 ## Cómo buildear el APK debug
 
@@ -92,7 +105,7 @@ El scheme de callback es `raybanmetadat`. Meta AI vuelve a la app por ese scheme
 
 ## Layout
 
-`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas y los feature flags. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency` y `StreamSessionAnalytics` son cuentas puras (tienen tests).
+`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags y la galería Murdoku. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency`, `StreamSessionAnalytics` y `BoardCaptureMath` son cuentas puras (tienen tests).
 
 ## Docs
 

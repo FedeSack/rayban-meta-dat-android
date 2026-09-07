@@ -106,6 +106,17 @@ fun FeatureFlagsPanel(
                 ),
         )
         FlagRow(
+            title = "Murdoku HQ capture",
+            subtitle =
+                if (flags.murdokuHqCapture) {
+                    "Forces HIGH / 15 fps. Stills for an external solver, not live HUD latency."
+                } else {
+                    "HQ stills for an external solver. Off keeps the live preview path."
+                },
+            checked = flags.murdokuHqCapture,
+            onCheckedChange = { onFlagChange(FeatureFlag.MURDOKU_HQ_CAPTURE, it) },
+        )
+        FlagRow(
             title = "Prefer sharpness",
             subtitle = "Meta: lower res/fps can look sharper under BT pressure",
             checked = flags.preferSharpness,

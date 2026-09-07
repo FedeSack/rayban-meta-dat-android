@@ -4,7 +4,9 @@ import android.Manifest.permission.BLUETOOTH
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.Manifest.permission.CAMERA
 import android.Manifest.permission.INTERNET
+import android.content.Intent
 import android.graphics.Color
+import android.net.Uri
 import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.SystemBarStyle
@@ -46,9 +48,12 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onRegister = { viewModel.register(this) },
                     onMock = viewModel::useMock,
+                    onMurdoku = { viewModel.enableMurdokuAndConnect(this) },
                     onBack = viewModel::backToConnect,
                     onStart = { viewModel.onStartClicked { wearableCamera.launch(Permission.CAMERA) } },
                     onStop = viewModel::stopStream,
+                    onCaptureBoard = viewModel::captureBoard,
+                    onShareCapture = ::shareCapture,
                     onSurface = viewModel::attachPreview,
                     onSurfaceGone = viewModel::detachPreview,
                     onFlagChange = viewModel::setFlag,
@@ -62,5 +67,17 @@ class MainActivity : ComponentActivity() {
     override fun onStart() {
         super.onStart()
         androidPermissions.launch(arrayOf(BLUETOOTH, BLUETOOTH_CONNECT, INTERNET, CAMERA))
+    }
+
+    private fun shareCapture(capture: BoardCapture) {
+        val uri = Uri.parse(capture.uri)
+        val intent =
+            Intent(Intent.ACTION_SEND).apply {
+                type = capture.mime
+                putExtra(Intent.EXTRA_STREAM, uri)
+                clipData = android.content.ClipData.newRawUri(capture.fileName, uri)
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            }
+        startActivity(Intent.createChooser(intent, "Exportar tablero"))
     }
 }

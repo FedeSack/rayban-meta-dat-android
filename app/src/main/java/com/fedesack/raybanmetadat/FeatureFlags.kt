@@ -8,6 +8,7 @@ enum class FeatureFlag(
     ANALYTICS_OVERLAY("analyticsOverlay", default = false),
     VERBOSE_LOGCAT("verboseLogcat", default = false),
     PREFER_SHARPNESS("preferSharpness", default = false),
+    MURDOKU_HQ_CAPTURE("murdokuHqCapture", default = false),
     GAZE_BRIDGE("gazeBridge", default = false, stub = true),
     VOICE_ASSIST("voiceAssist", default = false, stub = true),
     VOICE_DEV_MODE("voiceDevMode", default = false, stub = true),
@@ -54,6 +55,7 @@ data class FeatureFlags(
     val analyticsOverlay: Boolean = FeatureFlag.ANALYTICS_OVERLAY.default,
     val verboseLogcat: Boolean = FeatureFlag.VERBOSE_LOGCAT.default,
     val preferSharpness: Boolean = FeatureFlag.PREFER_SHARPNESS.default,
+    val murdokuHqCapture: Boolean = FeatureFlag.MURDOKU_HQ_CAPTURE.default,
     val gazeBridge: Boolean = FeatureFlag.GAZE_BRIDGE.default,
     val voiceAssist: Boolean = FeatureFlag.VOICE_ASSIST.default,
     val voiceDevMode: Boolean = FeatureFlag.VOICE_DEV_MODE.default,
@@ -65,17 +67,28 @@ data class FeatureFlags(
             FeatureFlag.ANALYTICS_OVERLAY -> analyticsOverlay
             FeatureFlag.VERBOSE_LOGCAT -> verboseLogcat
             FeatureFlag.PREFER_SHARPNESS -> preferSharpness
+            FeatureFlag.MURDOKU_HQ_CAPTURE -> murdokuHqCapture
             FeatureFlag.GAZE_BRIDGE -> gazeBridge
             FeatureFlag.VOICE_ASSIST -> voiceAssist
             FeatureFlag.VOICE_DEV_MODE -> voiceDevMode
         }
 
     fun streamConfig(): StreamCaptureConfig =
-        StreamCaptureConfig(
-            quality = videoQuality,
-            frameRate = frameRate,
-            preferSharpness = preferSharpness,
-        )
+        if (murdokuHqCapture) {
+            StreamCaptureConfig(
+                quality = VideoQualityFlag.HIGH,
+                frameRate = FrameRateFlag.FPS_15,
+                compressVideo = true,
+                preferSharpness = true,
+                murdokuHq = true,
+            )
+        } else {
+            StreamCaptureConfig(
+                quality = videoQuality,
+                frameRate = frameRate,
+                preferSharpness = preferSharpness,
+            )
+        }
 }
 
 data class StreamCaptureConfig(
@@ -83,6 +96,7 @@ data class StreamCaptureConfig(
     val frameRate: FrameRateFlag = FrameRateFlag.DEFAULT,
     val compressVideo: Boolean = true,
     val preferSharpness: Boolean = false,
+    val murdokuHq: Boolean = false,
 ) {
     val qualityName: String get() = quality.key
     val fps: Int get() = frameRate.fps
@@ -101,6 +115,7 @@ object FeatureFlagsCatalog {
             FeatureFlag.ANALYTICS_OVERLAY -> current.copy(analyticsOverlay = enabled)
             FeatureFlag.VERBOSE_LOGCAT -> current.copy(verboseLogcat = enabled)
             FeatureFlag.PREFER_SHARPNESS -> current.copy(preferSharpness = enabled)
+            FeatureFlag.MURDOKU_HQ_CAPTURE -> current.copy(murdokuHqCapture = enabled)
             FeatureFlag.GAZE_BRIDGE -> current.copy(gazeBridge = enabled)
             FeatureFlag.VOICE_ASSIST -> current.copy(voiceAssist = enabled)
             FeatureFlag.VOICE_DEV_MODE -> current.copy(voiceDevMode = enabled)
@@ -132,6 +147,7 @@ object FeatureFlagsCatalog {
             analyticsOverlay = getBoolean(FeatureFlag.ANALYTICS_OVERLAY.key, FeatureFlag.ANALYTICS_OVERLAY.default),
             verboseLogcat = getBoolean(FeatureFlag.VERBOSE_LOGCAT.key, FeatureFlag.VERBOSE_LOGCAT.default),
             preferSharpness = getBoolean(FeatureFlag.PREFER_SHARPNESS.key, FeatureFlag.PREFER_SHARPNESS.default),
+            murdokuHqCapture = getBoolean(FeatureFlag.MURDOKU_HQ_CAPTURE.key, FeatureFlag.MURDOKU_HQ_CAPTURE.default),
             gazeBridge = getBoolean(FeatureFlag.GAZE_BRIDGE.key, FeatureFlag.GAZE_BRIDGE.default),
             voiceAssist = getBoolean(FeatureFlag.VOICE_ASSIST.key, FeatureFlag.VOICE_ASSIST.default),
             voiceDevMode = getBoolean(FeatureFlag.VOICE_DEV_MODE.key, FeatureFlag.VOICE_DEV_MODE.default),
@@ -160,10 +176,13 @@ object FeatureFlagsCatalog {
     fun toMap(flags: FeatureFlags): Map<String, Boolean> =
         FeatureFlag.entries.associate { it.key to flags.enabled(it) }
 
-    fun streamSettings(flags: FeatureFlags): Map<String, Any> =
-        mapOf(
-            VIDEO_QUALITY_KEY to flags.videoQuality.key,
-            FRAME_RATE_KEY to flags.frameRate.fps,
-            FeatureFlag.PREFER_SHARPNESS.key to flags.preferSharpness,
+    fun streamSettings(flags: FeatureFlags): Map<String, Any> {
+        val config = flags.streamConfig()
+        return mapOf(
+            VIDEO_QUALITY_KEY to config.qualityName,
+            FRAME_RATE_KEY to config.fps,
+            FeatureFlag.PREFER_SHARPNESS.key to config.preferSharpness,
+            FeatureFlag.MURDOKU_HQ_CAPTURE.key to config.murdokuHq,
         )
+    }
 }
