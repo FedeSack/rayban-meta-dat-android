@@ -64,6 +64,8 @@ fun LiveScreen(
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
     onVideoQualityChange: (VideoQualityFlag) -> Unit,
     onFrameRateChange: (FrameRateFlag) -> Unit,
+    onIntentWebhookUrlChange: (String) -> Unit,
+    onEnqueueChat: (String) -> Unit,
 ) {
     var showFlags by remember { mutableStateOf(false) }
     var analyticsExpanded by remember { mutableStateOf(false) }
@@ -167,6 +169,11 @@ fun LiveScreen(
                 onFlagChange = onFlagChange,
                 onVideoQualityChange = onVideoQualityChange,
                 onFrameRateChange = onFrameRateChange,
+                intentWebhookUrl = state.intentWebhookUrl,
+                lastIntentStatus = state.lastIntentStatus,
+                queuedIntentCount = state.queuedIntentCount,
+                onIntentWebhookUrlChange = onIntentWebhookUrlChange,
+                onEnqueueChat = onEnqueueChat,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)

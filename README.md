@@ -70,7 +70,26 @@ Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayb
 - `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
 - `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
 - `gazeBridge` / `voiceAssist` — stubs, no-op hasta cablearlos. No hay producto gaze/Windows en esta app.
-- `voiceDevMode` — stub (off). Más adelante enruta voz→agente de código. No es Meta Hey-wake ni STT. Chip **Dev mode** en Connect/Live cuando está on.
+- `voiceDevMode` — off. Cuando está on, los intents encolados se POSTean como JSON a una URL de webhook (campo en Features, persistido en los mismos prefs). La cola `IntentQueue` es in-memory. Smoke sin STT: Features → utterance + **Enqueue chat** (`source=chat`). **No hay wake word de Meta**; este es el path Dev hacia nuestro agente de código. Astra / secrets / APK install quedan fuera.
+
+## Intent queue (path Dev)
+
+Spike de egress. El schema de enqueue está cerrado:
+
+```json
+{
+  "id": "uuid",
+  "utterance": "string",
+  "source": "dat|mic|chat",
+  "ts": "ISO-8601",
+  "deviceId": "string",
+  "appVersion": "string",
+  "flags": { "voiceDevMode": true },
+  "prefer": "skill|apk|auto"
+}
+```
+
+`prefer` default `auto`. Si `voiceDevMode` está off la cola igual acepta, pero no hay POST. La respuesta Dev→Android (`intentId`, `status`, `kind`, …) se guarda si el webhook la devuelve; todavía no se consume.
 
 ## Modo Murdoku (HQ capture)
 
@@ -105,7 +124,7 @@ El scheme de callback es `raybanmetadat`. Meta AI vuelve a la app por ese scheme
 
 ## Layout
 
-`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags y la galería Murdoku. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency`, `StreamSessionAnalytics` y `BoardCaptureMath` son cuentas puras (tienen tests).
+`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags y la galería Murdoku. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency`, `StreamSessionAnalytics` y `BoardCaptureMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
 
 ## Docs
 

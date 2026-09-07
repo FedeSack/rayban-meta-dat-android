@@ -31,6 +31,15 @@ class FeatureFlagsStore(context: Context) {
         return load()
     }
 
+    fun intentWebhookUrl(default: String = ""): String =
+        prefs.getString(FeatureFlagsCatalog.INTENT_WEBHOOK_URL_KEY, default)?.trim().orEmpty()
+            .ifEmpty { default.trim() }
+
+    fun setIntentWebhookUrl(url: String): String {
+        prefs.edit().putString(FeatureFlagsCatalog.INTENT_WEBHOOK_URL_KEY, url.trim()).apply()
+        return intentWebhookUrl()
+    }
+
     companion object {
         const val PREFS_NAME = "rayban_dat_flags"
     }

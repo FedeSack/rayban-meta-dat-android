@@ -25,6 +25,8 @@ fun DatRoot(
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
     onVideoQualityChange: (VideoQualityFlag) -> Unit,
     onFrameRateChange: (FrameRateFlag) -> Unit,
+    onIntentWebhookUrlChange: (String) -> Unit,
+    onEnqueueChat: (String) -> Unit,
 ) {
     when (state.phase) {
         Phase.CONNECT ->
@@ -36,6 +38,8 @@ fun DatRoot(
                 onFlagChange = onFlagChange,
                 onVideoQualityChange = onVideoQualityChange,
                 onFrameRateChange = onFrameRateChange,
+                onIntentWebhookUrlChange = onIntentWebhookUrlChange,
+                onEnqueueChat = onEnqueueChat,
             )
         Phase.LIVE ->
             LiveScreen(
@@ -50,6 +54,8 @@ fun DatRoot(
                 onFlagChange = onFlagChange,
                 onVideoQualityChange = onVideoQualityChange,
                 onFrameRateChange = onFrameRateChange,
+                onIntentWebhookUrlChange = onIntentWebhookUrlChange,
+                onEnqueueChat = onEnqueueChat,
             )
     }
 }

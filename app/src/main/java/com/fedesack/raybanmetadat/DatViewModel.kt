@@ -3,6 +3,7 @@ package com.fedesack.raybanmetadat
 import android.app.Activity
 import android.app.Application
 import android.os.SystemClock
+import android.provider.Settings
 import android.util.Log
 import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
@@ -38,14 +39,23 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     private val captureStore = BoardCaptureStore(application)
     private val captureWriter = BoardCaptureWriter(application)
     private val analytics = StreamSessionAnalytics()
+    private val intentQueue = IntentQueue()
     private val _state =
         MutableStateFlow(
             AppState(
                 flags = flagsStore.load(),
                 captures = captureStore.load(),
+                intentWebhookUrl = flagsStore.intentWebhookUrl(),
             ),
         )
     val state: StateFlow<AppState> = _state.asStateFlow()
+    private val intentEgress =
+        IntentEgress(
+            queue = intentQueue,
+            client = HttpUrlIntentWebhookClient(),
+            isVoiceDevMode = { _state.value.flags.voiceDevMode },
+            webhookUrl = { _state.value.intentWebhookUrl },
+        )
 
     private var session: DeviceSession? = null
     private var camera: Camera? = null
@@ -279,6 +289,42 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         _state.update { it.copy(flags = next) }
         logAnalytics("flag", mapOf("name" to FeatureFlagsCatalog.FRAME_RATE_KEY, "value" to frameRate.fps))
         restartLiveStreamIfNeeded()
+    }
+
+    fun setIntentWebhookUrl(url: String) {
+        val stored = flagsStore.setIntentWebhookUrl(url)
+        _state.update { it.copy(intentWebhookUrl = stored) }
+    }
+
+    fun enqueueChatStub(utterance: String) {
+        val text = utterance.trim().ifEmpty { DEFAULT_CHAT_STUB }
+        val intent =
+            VoiceIntent.create(
+                utterance = text,
+                source = IntentSource.CHAT,
+                deviceId = deviceId(),
+                appVersion = appVersion(),
+                voiceDevMode = _state.value.flags.voiceDevMode,
+            )
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = intentEgress.submit(intent)
+            _state.update {
+                it.copy(
+                    queuedIntentCount = intentQueue.size,
+                    lastIntentStatus = result.statusLine,
+                )
+            }
+            logAnalytics(
+                "intent",
+                mapOf(
+                    "id" to intent.id,
+                    "source" to intent.source.json,
+                    "posted" to result.posted,
+                    "reason" to result.reason,
+                    "queued" to intentQueue.size,
+                ),
+            )
+        }
     }
 
     fun onWearableCameraPermission(status: PermissionStatus) {
@@ -670,6 +716,20 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         Log.i(AnalyticsLog.TAG, AnalyticsLog.line(event, fields))
     }
 
+    private fun deviceId(): String =
+        runCatching {
+            Settings.Secure.getString(
+                getApplication<Application>().contentResolver,
+                Settings.Secure.ANDROID_ID,
+            )
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "android"
+
+    private fun appVersion(): String =
+        runCatching {
+            val app = getApplication<Application>()
+            app.packageManager.getPackageInfo(app.packageName, 0).versionName
+        }.getOrNull()?.takeIf { it.isNotBlank() } ?: "0.1.0"
+
     override fun onCleared() {
         camera?.stop()
         clearStream()
@@ -678,6 +738,10 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         sink.detach()
         mockKit?.disable()
         super.onCleared()
+    }
+
+    companion object {
+        const val DEFAULT_CHAT_STUB = "chat stub"
     }
 }
 
