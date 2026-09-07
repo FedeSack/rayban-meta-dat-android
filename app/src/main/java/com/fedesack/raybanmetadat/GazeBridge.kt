@@ -73,16 +73,21 @@ class GazeBridge(
 
     private fun pumpLoop() {
         while (running.get()) {
-            if (server.clientCount == 0) {
-                sleeper(20)
-                continue
+            try {
+                if (server.clientCount == 0) {
+                    sleeper(20)
+                    continue
+                }
+                val encoded = pipeline.poll()
+                if (encoded != null) {
+                    server.broadcastText(encoded.meta.json())
+                    server.broadcastBinary(encoded.jpeg)
+                }
+                sleeper(GazeWs.PUMP_SLEEP_MS)
+            } catch (_: InterruptedException) {
+                Thread.currentThread().interrupt()
+                return
             }
-            val encoded = pipeline.poll()
-            if (encoded != null) {
-                server.broadcastText(encoded.meta.json())
-                server.broadcastBinary(encoded.jpeg)
-            }
-            sleeper(GazeWs.PUMP_SLEEP_MS)
         }
     }
 }

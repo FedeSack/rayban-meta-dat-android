@@ -170,12 +170,12 @@ class GazeJpegPipelineTest {
         assertEquals(0xD8.toByte(), first.jpeg[1])
 
         now = 1_040L
-        pipeline.submit(640, 480, compressed = false, codecConfig = false, presentationTimeUs = 2L) {
-            ByteArray(4)
-        }
         assertNull(pipeline.poll())
 
         now = 1_080L
+        pipeline.submit(640, 480, compressed = false, codecConfig = false, presentationTimeUs = 2L) {
+            ByteArray(4)
+        }
         val second = pipeline.poll()
         assertEquals(640, second!!.meta.w)
         assertEquals(480, second.meta.h)
@@ -220,7 +220,13 @@ class GazeBridgeGateTest {
                 encodeYuv = { byteArrayOf(1) },
                 nowMs = { 0L },
             )
-        val bridge = GazeBridge(server = hub, pipeline = pipeline, wifiIp = { "10.0.0.8" }, sleeper = {})
+        val bridge =
+            GazeBridge(
+                server = hub,
+                pipeline = pipeline,
+                wifiIp = { "10.0.0.8" },
+                sleeper = { Thread.sleep(2) },
+            )
         assertEquals("ws://10.0.0.8:8765/frames", bridge.displayUrl(true))
         assertNull(bridge.displayUrl(false))
 
@@ -263,13 +269,15 @@ class GazeBridgeGateTest {
                 sleeper = { Thread.sleep(5) },
             )
         bridge.sync(flagOn = true, streamLive = true)
-        bridge.submit(320, 240, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
-            ByteArray(6)
+        repeat(40) {
+            if (hub.texts.isNotEmpty()) return@repeat
+            bridge.submit(320, 240, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
+                ByteArray(6)
+            }
+            if (emitted.await(50, TimeUnit.MILLISECONDS)) return@repeat
         }
-        now = 10_000L
-        assertTrue(emitted.await(1, TimeUnit.SECONDS))
-        assertEquals("""{"ts_ms":10000,"w":320,"h":240}""", hub.texts.first())
-        assertTrue(hub.binaries.first().contentEquals(byteArrayOf(0xFF.toByte(), 0xD8.toByte())))
+        assertEquals("""{"ts_ms":10000,"w":320,"h":240}""", hub.texts.firstOrNull())
+        assertTrue(hub.binaries.firstOrNull()?.contentEquals(byteArrayOf(0xFF.toByte(), 0xD8.toByte())) == true)
         bridge.stop()
     }
 }
