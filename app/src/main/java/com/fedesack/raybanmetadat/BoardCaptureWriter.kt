@@ -177,7 +177,7 @@ class BoardCaptureWriter(private val context: Context) {
     )
 
     companion object {
-        const val RELATIVE_PATH = "${Environment.DIRECTORY_PICTURES}/RaybanDat"
+        val RELATIVE_PATH = "${Environment.DIRECTORY_PICTURES}/RaybanDat"
         const val DIR_NAME = "captures"
     }
 }
