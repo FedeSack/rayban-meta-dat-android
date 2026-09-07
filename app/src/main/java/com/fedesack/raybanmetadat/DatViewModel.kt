@@ -40,12 +40,14 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     private val captureWriter = BoardCaptureWriter(application)
     private val analytics = StreamSessionAnalytics()
     private val intentQueue = IntentQueue()
+    private val initialFlags = flagsStore.load()
     private val _state =
         MutableStateFlow(
             AppState(
-                flags = flagsStore.load(),
+                flags = initialFlags,
                 captures = captureStore.load(),
                 intentWebhookUrl = flagsStore.intentWebhookUrl(),
+                gazeEndpoint = if (initialFlags.gazeBridge) GazeLan.endpoint(GazeLan.wifiIpv4()) else null,
             ),
         )
     val state: StateFlow<AppState> = _state.asStateFlow()
@@ -55,6 +57,17 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             client = HttpUrlIntentWebhookClient(),
             isVoiceDevMode = { _state.value.flags.voiceDevMode },
             webhookUrl = { _state.value.intentWebhookUrl },
+        )
+    private val gaze =
+        GazeBridge(
+            server = GazeWsServer(),
+            pipeline =
+                GazeJpegPipeline(
+                    encodeYuv = { yuv ->
+                        runCatching { YuvJpeg.encodeYuv(yuv, GazeWs.JPEG_QUALITY) }.getOrNull()
+                    },
+                    hevc = GazeHevcDecoder(),
+                ),
         )
 
     private var session: DeviceSession? = null
@@ -213,6 +226,9 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 "stub" to flag.stub,
             ),
         )
+        if (flag == FeatureFlag.GAZE_BRIDGE) {
+            syncGazeBridge()
+        }
         if (flag == FeatureFlag.MURDOKU_HQ_CAPTURE) {
             restartLiveStreamIfNeeded()
         }
@@ -589,6 +605,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                     }
                 }
             }
+        syncGazeBridge()
         framesJob =
             viewModelScope.launch(frames) {
                 active.videoStream.collect { frame ->
@@ -620,6 +637,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                         _state.update { it.copy(analytics = analytics.snapshot()) }
                     }
                     rememberFrame(frame)
+                    offerGaze(frame)
                     sink.render(frame, received)
                 }
             }
@@ -671,6 +689,8 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         streamJob = null
         streamErrorJob = null
         synchronized(lastFrameLock) { lastRawFrame = null }
+        gaze.sync(flagOn = false, streamLive = false)
+        publishGazeState()
         runCatching { camera?.stop() }
         camera?.close()
         camera = null
@@ -736,8 +756,48 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         session?.stop()
         clearSession()
         sink.detach()
+        gaze.stop()
         mockKit?.disable()
         super.onCleared()
+    }
+
+    private fun offerGaze(frame: VideoFrame) {
+        if (!_state.value.flags.gazeBridge) return
+        gaze.submit(
+            width = frame.width,
+            height = frame.height,
+            compressed = frame.isCompressed,
+            codecConfig = frame.isCodecConfig,
+            presentationTimeUs = frame.presentationTimeUs,
+            bytes = { YuvJpeg.copyBuffer(frame.buffer) },
+        )
+    }
+
+    private fun syncGazeBridge() {
+        val flags = _state.value.flags
+        gaze.sync(flagOn = flags.gazeBridge, streamLive = isLiveStreamActive() && stream != null)
+        publishGazeState()
+        if (flags.gazeBridge) {
+            logAnalytics(
+                "gaze",
+                mapOf(
+                    "on" to true,
+                    "live" to (stream != null),
+                    "listening" to gaze.listening,
+                    "url" to gaze.displayUrl(true),
+                ),
+            )
+        }
+    }
+
+    private fun publishGazeState() {
+        val flagOn = _state.value.flags.gazeBridge
+        _state.update {
+            it.copy(
+                gazeEndpoint = gaze.displayUrl(flagOn),
+                gazeListening = gaze.listening,
+            )
+        }
     }
 
     companion object {

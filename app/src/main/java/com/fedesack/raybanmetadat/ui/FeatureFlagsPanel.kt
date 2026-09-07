@@ -34,6 +34,7 @@ import androidx.compose.ui.unit.sp
 import com.fedesack.raybanmetadat.FeatureFlag
 import com.fedesack.raybanmetadat.FeatureFlags
 import com.fedesack.raybanmetadat.FrameRateFlag
+import com.fedesack.raybanmetadat.GazeWs
 import com.fedesack.raybanmetadat.VideoQualityFlag
 
 @Composable
@@ -65,6 +66,8 @@ fun FeatureFlagsPanel(
     queuedIntentCount: Int = 0,
     onIntentWebhookUrlChange: (String) -> Unit = {},
     onEnqueueChat: (String) -> Unit = {},
+    gazeEndpoint: String? = null,
+    gazeListening: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
@@ -151,10 +154,30 @@ fun FeatureFlagsPanel(
         )
         FlagRow(
             title = "Gaze bridge",
-            subtitle = "Stub — not wired",
+            subtitle =
+                if (flags.gazeBridge) {
+                    if (gazeListening) {
+                        "LAN JPEG relay live · ${gazeEndpoint ?: GazeWs.endpoint(null)}"
+                    } else {
+                        "LAN JPEG relay. Start the DAT stream to bind ${gazeEndpoint ?: GazeWs.endpoint(null)}"
+                    }
+                } else {
+                    "LAN JPEG relay to the Windows sidecar. Off until you need cursor."
+                },
             checked = flags.gazeBridge,
             onCheckedChange = { onFlagChange(FeatureFlag.GAZE_BRIDGE, it) },
         )
+        if (flags.gazeBridge) {
+            Text(
+                text = gazeEndpoint ?: GazeWs.endpoint(null),
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        color = DatTokens.white,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                    ),
+            )
+        }
         FlagRow(
             title = "Voice assist",
             subtitle = "Stub — not wired",
@@ -177,6 +200,26 @@ fun FeatureFlagsPanel(
             )
         }
     }
+}
+
+@Composable
+fun GazeLanChip(
+    listening: Boolean,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = if (listening) "Gaze LAN" else "Gaze",
+        style =
+            MaterialTheme.typography.labelMedium.copy(
+                color = DatTokens.white,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+            ),
+        modifier =
+            modifier
+                .background(DatTokens.surface, RoundedCornerShape(DatTokens.chipRadius))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

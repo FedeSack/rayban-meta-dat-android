@@ -22,7 +22,7 @@ class FeatureFlagsTest {
             assertFalse(flag.default)
             assertEquals(flag.default, flags.enabled(flag))
         }
-        assertTrue(FeatureFlag.GAZE_BRIDGE.stub)
+        assertFalse(FeatureFlag.GAZE_BRIDGE.stub)
         assertTrue(FeatureFlag.VOICE_ASSIST.stub)
         assertTrue(FeatureFlag.VOICE_DEV_MODE.stub)
         assertFalse(FeatureFlag.ANALYTICS_OVERLAY.stub)
