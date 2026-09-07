@@ -71,7 +71,15 @@ fun ConnectScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(DatTokens.headerGap),
             ) {
-                StatusChip(connected = connected)
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    StatusChip(connected = connected)
+                    if (state.flags.voiceDevMode) {
+                        DevModeChip()
+                    }
+                }
                 Text(
                     text = "Ray-Ban Meta",
                     style = MaterialTheme.typography.headlineLarge,

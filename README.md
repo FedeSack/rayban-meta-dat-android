@@ -69,6 +69,7 @@ Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayb
 - `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
 - `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
 - `gazeBridge` / `voiceAssist` — stubs, no-op hasta cablearlos. No hay producto gaze/Windows en esta app.
+- `voiceDevMode` — stub (off). Más adelante enruta voz→agente de código. No es Meta Hey-wake ni STT. Chip **Dev mode** en Connect/Live cuando está on.
 
 ## Cómo buildear el APK debug
 

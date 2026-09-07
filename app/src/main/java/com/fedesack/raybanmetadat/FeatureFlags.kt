@@ -10,6 +10,7 @@ enum class FeatureFlag(
     PREFER_SHARPNESS("preferSharpness", default = false),
     GAZE_BRIDGE("gazeBridge", default = false, stub = true),
     VOICE_ASSIST("voiceAssist", default = false, stub = true),
+    VOICE_DEV_MODE("voiceDevMode", default = false, stub = true),
 }
 
 enum class VideoQualityFlag {
@@ -55,6 +56,7 @@ data class FeatureFlags(
     val preferSharpness: Boolean = FeatureFlag.PREFER_SHARPNESS.default,
     val gazeBridge: Boolean = FeatureFlag.GAZE_BRIDGE.default,
     val voiceAssist: Boolean = FeatureFlag.VOICE_ASSIST.default,
+    val voiceDevMode: Boolean = FeatureFlag.VOICE_DEV_MODE.default,
     val videoQuality: VideoQualityFlag = VideoQualityFlag.DEFAULT,
     val frameRate: FrameRateFlag = FrameRateFlag.DEFAULT,
 ) {
@@ -65,6 +67,7 @@ data class FeatureFlags(
             FeatureFlag.PREFER_SHARPNESS -> preferSharpness
             FeatureFlag.GAZE_BRIDGE -> gazeBridge
             FeatureFlag.VOICE_ASSIST -> voiceAssist
+            FeatureFlag.VOICE_DEV_MODE -> voiceDevMode
         }
 
     fun streamConfig(): StreamCaptureConfig =
@@ -100,6 +103,7 @@ object FeatureFlagsCatalog {
             FeatureFlag.PREFER_SHARPNESS -> current.copy(preferSharpness = enabled)
             FeatureFlag.GAZE_BRIDGE -> current.copy(gazeBridge = enabled)
             FeatureFlag.VOICE_ASSIST -> current.copy(voiceAssist = enabled)
+            FeatureFlag.VOICE_DEV_MODE -> current.copy(voiceDevMode = enabled)
         }
 
     fun applyQuality(
@@ -130,6 +134,7 @@ object FeatureFlagsCatalog {
             preferSharpness = getBoolean(FeatureFlag.PREFER_SHARPNESS.key, FeatureFlag.PREFER_SHARPNESS.default),
             gazeBridge = getBoolean(FeatureFlag.GAZE_BRIDGE.key, FeatureFlag.GAZE_BRIDGE.default),
             voiceAssist = getBoolean(FeatureFlag.VOICE_ASSIST.key, FeatureFlag.VOICE_ASSIST.default),
+            voiceDevMode = getBoolean(FeatureFlag.VOICE_DEV_MODE.key, FeatureFlag.VOICE_DEV_MODE.default),
             videoQuality = VideoQualityFlag.parse(getString(VIDEO_QUALITY_KEY, VideoQualityFlag.DEFAULT.key)),
             frameRate = FrameRateFlag.parse(getInt(FRAME_RATE_KEY, FrameRateFlag.DEFAULT.fps)),
         )
