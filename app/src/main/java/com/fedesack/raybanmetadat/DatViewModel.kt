@@ -245,6 +245,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         )
         if (flag == FeatureFlag.GAZE_BRIDGE) {
             syncGazeBridge()
+            restartLiveStreamIfNeeded()
         }
         if (flag == FeatureFlag.MURDOKU_HQ_CAPTURE) {
             _state.update { current ->

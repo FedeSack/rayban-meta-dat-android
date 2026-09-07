@@ -73,12 +73,16 @@ data class FeatureFlags(
             FeatureFlag.VOICE_DEV_MODE -> voiceDevMode
         }
 
-    fun streamConfig(): StreamCaptureConfig =
-        if (murdokuHqCapture) {
+    fun streamConfig(): StreamCaptureConfig {
+        // Gaze JPEG relay is YUV-only (HEVC ImageReader side-decode was removed).
+        // Request uncompressed DAT frames so /frames can emit JPEG+meta.
+        // Tradeoff: more Bluetooth bandwidth while gazeBridge is on.
+        val compressVideo = !gazeBridge
+        return if (murdokuHqCapture) {
             StreamCaptureConfig(
                 quality = VideoQualityFlag.HIGH,
                 frameRate = FrameRateFlag.FPS_15,
-                compressVideo = true,
+                compressVideo = compressVideo,
                 preferSharpness = true,
                 murdokuHq = true,
             )
@@ -86,9 +90,11 @@ data class FeatureFlags(
             StreamCaptureConfig(
                 quality = videoQuality,
                 frameRate = frameRate,
+                compressVideo = compressVideo,
                 preferSharpness = preferSharpness,
             )
         }
+    }
 }
 
 data class StreamCaptureConfig(

@@ -162,7 +162,7 @@ fun FeatureFlagsPanel(
                         "LAN JPEG relay. Start the DAT stream to bind ${gazeEndpoint ?: GazeWs.endpoint(null)}"
                     }
                 } else {
-                    "LAN JPEG relay to the Windows sidecar. Off until you need cursor."
+                    "LAN JPEG relay to the Windows sidecar. On = uncompressed YUV (more BT bandwidth)."
                 },
             checked = flags.gazeBridge,
             onCheckedChange = { onFlagChange(FeatureFlag.GAZE_BRIDGE, it) },
