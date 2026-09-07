@@ -859,14 +859,18 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun offerGaze(frame: VideoFrame) {
         if (!_state.value.flags.gazeBridge) return
-        gaze.submit(
-            width = frame.width,
-            height = frame.height,
-            compressed = frame.isCompressed,
-            codecConfig = frame.isCodecConfig,
-            presentationTimeUs = frame.presentationTimeUs,
-            bytes = { YuvJpeg.copyBuffer(frame.buffer) },
-        )
+        try {
+            gaze.submit(
+                width = frame.width,
+                height = frame.height,
+                compressed = frame.isCompressed,
+                codecConfig = frame.isCodecConfig,
+                presentationTimeUs = frame.presentationTimeUs,
+                bytes = { YuvJpeg.copyBuffer(frame.buffer) },
+            )
+        } catch (t: Throwable) {
+            Log.w("RaybanDat/Gaze", "submit skipped: ${t.message}")
+        }
     }
 
     private fun syncGazeBridge() {

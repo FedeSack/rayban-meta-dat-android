@@ -209,6 +209,95 @@ class GazeJpegPipelineTest {
         pipeline.stop()
         assertTrue(hevc.stopped)
     }
+
+    @Test
+    fun hevcOfferCrashDoesNotBlockYuvRelay() {
+        val hevc =
+            object : GazeHevcSink {
+                override fun offer(frame: GazeRawFrame) = throw RuntimeException("boom")
+
+                override fun latestYuv(): GazeYuv? = null
+
+                override fun start() = Unit
+
+                override fun stop() = Unit
+            }
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
+                hevc = hevc,
+                nowMs = { 2_000L },
+            )
+        pipeline.start()
+        pipeline.submit(720, 1280, compressed = true, codecConfig = true, presentationTimeUs = 0L) {
+            byteArrayOf(1, 2, 3)
+        }
+        pipeline.submit(320, 240, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
+            ByteArray(8)
+        }
+        val encoded = pipeline.poll()
+        assertEquals(320, encoded!!.meta.w)
+        assertEquals(240, encoded.meta.h)
+        pipeline.stop()
+    }
+
+    @Test
+    fun yuvSlotWinsOverHevcSoSideDecodeFailureKeepsRelay() {
+        val hevc = RecordingHevcSink()
+        hevc.latest = GazeYuv(ByteArray(4), 99, 99, nv21 = true)
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
+                hevc = hevc,
+                nowMs = { 3_000L },
+            )
+        pipeline.start()
+        pipeline.submit(160, 120, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
+            ByteArray(6)
+        }
+        val encoded = pipeline.poll()
+        assertEquals(160, encoded!!.meta.w)
+        assertEquals(120, encoded.meta.h)
+        pipeline.stop()
+    }
+
+    @Test
+    fun compressedCopyFailureDoesNotThrowOrBlockLaterYuv() {
+        var compressedCalls = 0
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
+                hevc = RecordingHevcSink(),
+                nowMs = { 4_500L },
+            )
+        pipeline.start()
+        pipeline.submit(720, 1280, compressed = true, codecConfig = false, presentationTimeUs = 1L) {
+            compressedCalls++
+            error("closed buffer")
+        }
+        pipeline.submit(64, 48, compressed = false, codecConfig = false, presentationTimeUs = 2L) {
+            ByteArray(4)
+        }
+        val encoded = pipeline.poll()
+        assertEquals(1, compressedCalls)
+        assertEquals(64, encoded!!.meta.w)
+        pipeline.stop()
+    }
+
+    @Test
+    fun encodeFailureSkipsFrameInsteadOfThrowing() {
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = { throw IllegalStateException("bad yuv") },
+                nowMs = { 4_000L },
+            )
+        pipeline.start()
+        pipeline.submit(8, 8, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
+            ByteArray(4)
+        }
+        assertNull(pipeline.poll())
+        pipeline.stop()
+    }
 }
 
 class GazeBridgeGateTest {

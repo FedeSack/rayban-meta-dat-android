@@ -44,30 +44,39 @@ class GazeJpegPipeline(
         presentationTimeUs: Long,
         bytes: () -> ByteArray,
     ) {
-        if (compressed || codecConfig) {
-            hevc?.offer(
-                GazeRawFrame(
-                    bytes = bytes(),
-                    width = width,
-                    height = height,
-                    compressed = true,
-                    codecConfig = codecConfig,
-                    presentationTimeUs = presentationTimeUs,
-                ),
-            )
-            return
+        try {
+            if (compressed || codecConfig) {
+                hevc?.offer(
+                    GazeRawFrame(
+                        bytes = bytes(),
+                        width = width,
+                        height = height,
+                        compressed = true,
+                        codecConfig = codecConfig,
+                        presentationTimeUs = presentationTimeUs,
+                    ),
+                )
+                return
+            }
+            val now = nowMs()
+            if (!GazePace.due(now, lastAcceptMs, GazeWs.MIN_INTERVAL_MS)) return
+            lastAcceptMs = now
+            latestYuv.set(GazeYuv(bytes(), width, height, nv21 = false))
+        } catch (_: Throwable) {
+            // Side-decode / copy must never take down the live preview.
         }
-        val now = nowMs()
-        if (!GazePace.due(now, lastAcceptMs, GazeWs.MIN_INTERVAL_MS)) return
-        lastAcceptMs = now
-        latestYuv.set(GazeYuv(bytes(), width, height, nv21 = false))
     }
 
     fun poll(): EncodedGaze? {
         val now = nowMs()
         if (!GazePace.due(now, lastEmitMs, intervalMs)) return null
         val yuv = latestYuv.get() ?: hevc?.latestYuv() ?: return null
-        val jpeg = encodeYuv(yuv) ?: return null
+        val jpeg =
+            try {
+                encodeYuv(yuv)
+            } catch (_: Throwable) {
+                null
+            } ?: return null
         lastEmitMs = now
         return EncodedGaze(jpeg, GazeFrameMeta(tsMs = now, w = yuv.width, h = yuv.height))
     }

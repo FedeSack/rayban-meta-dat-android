@@ -78,6 +78,16 @@ object YuvJpeg {
         return nv21
     }
 
+    /**
+     * Pack YUV_420_888 planes into NV21 (Y plane + interleaved VU).
+     *
+     * Image.Plane DirectByteBuffers on some devices (Samsung MediaCodec /
+     * ImageReader) report a [ByteBuffer.limit] larger than the mapped native
+     * memory. The last row of each plane has no row-stride padding:
+     * `rowStride * (rows - 1) + pixelStride * (cols - 1) + 1`. Reading past
+     * that with `get()`/`memcpy` SIGSEGVs (SEGV_ACCERR). Never trust limit()
+     * as the readable end, and never clamp an invalid index into that range.
+     */
     fun yuv420888ToNv21(
         width: Int,
         height: Int,
@@ -89,35 +99,141 @@ object YuvJpeg {
         v: ByteBuffer,
         vRowStride: Int,
         vPixelStride: Int,
+        yPixelStride: Int = 1,
+        cropLeft: Int = 0,
+        cropTop: Int = 0,
     ): ByteArray {
-        val ySize = width * height
+        if (width <= 0 || height <= 0) {
+            throw IllegalArgumentException("yuv size $width x $height")
+        }
+        if (width > MAX_DIM || height > MAX_DIM) {
+            throw IllegalArgumentException("yuv size too large $width x $height")
+        }
+        val outW = width and 0x7FFFFFFE
+        val outH = height and 0x7FFFFFFE
+        if (outW <= 0 || outH <= 0) {
+            throw IllegalArgumentException("yuv even size $width x $height")
+        }
+        if (y.remaining() <= 0) {
+            throw IllegalArgumentException("empty y plane")
+        }
+        val ySize = outW * outH
         val nv21 = ByteArray(ySize + ySize / 2)
-        val yBuf = y.duplicate()
-        val yStart = yBuf.position()
-        var dst = 0
-        for (row in 0 until height) {
-            yBuf.position((yStart + row * yRowStride).coerceAtMost(yBuf.limit()))
-            val take = width.coerceAtMost(yBuf.remaining())
-            yBuf.get(nv21, dst, take)
-            dst += width
-        }
-        val uBuf = u.duplicate()
-        val vBuf = v.duplicate()
-        val uStart = uBuf.position()
-        val vStart = vBuf.position()
-        val chromaH = height / 2
-        val chromaW = width / 2
-        var o = ySize
-        for (row in 0 until chromaH) {
-            val uRow = uStart + row * uRowStride
-            val vRow = vStart + row * vRowStride
-            for (col in 0 until chromaW) {
-                val uIndex = uRow + col * uPixelStride
-                val vIndex = vRow + col * vPixelStride
-                nv21[o++] = vBuf.get(vIndex.coerceIn(0, vBuf.limit() - 1))
-                nv21[o++] = uBuf.get(uIndex.coerceIn(0, uBuf.limit() - 1))
-            }
-        }
+        copyPlane(
+            src = y,
+            rowStride = yRowStride,
+            pixelStride = yPixelStride,
+            width = outW,
+            height = outH,
+            cropLeft = cropLeft,
+            cropTop = cropTop,
+            dst = nv21,
+            dstOffset = 0,
+            dstPixelStride = 1,
+        )
+        val chromaW = outW / 2
+        val chromaH = outH / 2
+        copyPlane(
+            src = v,
+            rowStride = vRowStride,
+            pixelStride = vPixelStride,
+            width = chromaW,
+            height = chromaH,
+            cropLeft = cropLeft / 2,
+            cropTop = cropTop / 2,
+            dst = nv21,
+            dstOffset = ySize,
+            dstPixelStride = 2,
+        )
+        copyPlane(
+            src = u,
+            rowStride = uRowStride,
+            pixelStride = uPixelStride,
+            width = chromaW,
+            height = chromaH,
+            cropLeft = cropLeft / 2,
+            cropTop = cropTop / 2,
+            dst = nv21,
+            dstOffset = ySize + 1,
+            dstPixelStride = 2,
+        )
         return nv21
     }
+
+    /**
+     * Bytes actually mapped for an Image.Plane of [width] x [height] samples.
+     * The last row has no stride padding.
+     */
+    fun planeAccessibleBytes(
+        rowStride: Int,
+        pixelStride: Int,
+        width: Int,
+        height: Int,
+    ): Int {
+        if (width <= 0 || height <= 0) return 0
+        val px = pixelStride.coerceAtLeast(1)
+        val lastRow = px * (width - 1) + 1
+        val stride = if (rowStride <= 0) lastRow else rowStride
+        return stride * (height - 1) + lastRow
+    }
+
+    private fun copyPlane(
+        src: ByteBuffer,
+        rowStride: Int,
+        pixelStride: Int,
+        width: Int,
+        height: Int,
+        cropLeft: Int,
+        cropTop: Int,
+        dst: ByteArray,
+        dstOffset: Int,
+        dstPixelStride: Int,
+    ) {
+        if (width <= 0 || height <= 0) return
+        if (rowStride > MAX_STRIDE) {
+            throw IllegalArgumentException("rowStride $rowStride")
+        }
+        val srcBuf = src.duplicate()
+        val origin = srcBuf.position()
+        val px = pixelStride.coerceAtLeast(1)
+        if (px > MAX_PIXEL_STRIDE) {
+            throw IllegalArgumentException("pixelStride $pixelStride")
+        }
+        val dstStep = dstPixelStride.coerceAtLeast(1)
+        val cropX = cropLeft.coerceAtLeast(0)
+        val cropY = cropTop.coerceAtLeast(0)
+        val lastRow = px * (width - 1) + 1
+        val stride = if (rowStride <= 0) lastRow else rowStride
+        val conservative =
+            planeAccessibleBytes(stride, px, width + cropX, height + cropY)
+        // Never use an overstated limit() as the readable end. For heap
+        // buffers that are smaller than the formula, remaining() is tighter.
+        val endExclusive = minOf(origin + conservative, origin + srcBuf.remaining())
+        var out = dstOffset
+        for (row in 0 until height) {
+            val rowStart = origin + (cropY + row) * stride + cropX * px
+            if (px == 1 && dstStep == 1) {
+                val available = (endExclusive - rowStart).coerceAtLeast(0)
+                val take = minOf(width, available, (dst.size - out).coerceAtLeast(0))
+                if (take > 0 && rowStart >= origin && rowStart < endExclusive) {
+                    srcBuf.position(rowStart)
+                    srcBuf.get(dst, out, take)
+                }
+                out += width
+            } else {
+                for (col in 0 until width) {
+                    if (out !in dst.indices) return
+                    val idx = rowStart + col * px
+                    if (idx >= origin && idx < endExclusive) {
+                        dst[out] = srcBuf.get(idx)
+                    }
+                    out += dstStep
+                }
+            }
+        }
+    }
+
+    private const val MAX_DIM = 8192
+    private const val MAX_STRIDE = 16_384
+    private const val MAX_PIXEL_STRIDE = 16
 }
