@@ -105,6 +105,7 @@ data class StreamCaptureConfig(
 object FeatureFlagsCatalog {
     const val VIDEO_QUALITY_KEY = "videoQuality"
     const val FRAME_RATE_KEY = "frameRate"
+    const val INTENT_WEBHOOK_URL_KEY = "intentWebhookUrl"
 
     fun apply(
         current: FeatureFlags,

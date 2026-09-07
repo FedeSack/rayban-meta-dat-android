@@ -59,6 +59,8 @@ class MainActivity : ComponentActivity() {
                     onFlagChange = viewModel::setFlag,
                     onVideoQualityChange = viewModel::setVideoQuality,
                     onFrameRateChange = viewModel::setFrameRate,
+                    onIntentWebhookUrlChange = viewModel::setIntentWebhookUrl,
+                    onEnqueueChat = viewModel::enqueueChatStub,
                 )
             }
         }

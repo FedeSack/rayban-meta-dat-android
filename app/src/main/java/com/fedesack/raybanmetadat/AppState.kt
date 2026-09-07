@@ -30,6 +30,9 @@ data class AppState(
     val flags: FeatureFlags = FeatureFlags(),
     val captures: List<BoardCapture> = emptyList(),
     val capturing: Boolean = false,
+    val intentWebhookUrl: String = "",
+    val queuedIntentCount: Int = 0,
+    val lastIntentStatus: String? = null,
 ) {
     val canOpenLive: Boolean
         get() = androidReady && (source == DeviceSource.MOCK || registered)
