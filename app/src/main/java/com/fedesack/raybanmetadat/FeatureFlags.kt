@@ -9,7 +9,7 @@ enum class FeatureFlag(
     VERBOSE_LOGCAT("verboseLogcat", default = false),
     PREFER_SHARPNESS("preferSharpness", default = false),
     MURDOKU_HQ_CAPTURE("murdokuHqCapture", default = false),
-    GAZE_BRIDGE("gazeBridge", default = false, stub = true),
+    GAZE_BRIDGE("gazeBridge", default = false),
     VOICE_ASSIST("voiceAssist", default = false, stub = true),
     VOICE_DEV_MODE("voiceDevMode", default = false, stub = true),
 }

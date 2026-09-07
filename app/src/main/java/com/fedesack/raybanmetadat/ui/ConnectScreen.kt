@@ -82,6 +82,9 @@ fun ConnectScreen(
                     if (state.flags.voiceDevMode) {
                         DevModeChip()
                     }
+                    if (state.flags.gazeBridge) {
+                        GazeLanChip(listening = state.gazeListening)
+                    }
                 }
                 Text(
                     text = "Ray-Ban Meta",
@@ -162,6 +165,8 @@ fun ConnectScreen(
                 queuedIntentCount = state.queuedIntentCount,
                 onIntentWebhookUrlChange = onIntentWebhookUrlChange,
                 onEnqueueChat = onEnqueueChat,
+                gazeEndpoint = state.gazeEndpoint,
+                gazeListening = state.gazeListening,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)

@@ -69,7 +69,7 @@ Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayb
 - Si el stream está live, cambiar quality/fps hace stop+restart limpio. Si no hay sesión STARTED, el mensaje es **Stop and Start to apply**.
 - `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
 - `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
-- `gazeBridge` / `voiceAssist` — stubs, no-op hasta cablearlos. No hay producto gaze/Windows en esta app.
+- `gazeBridge` — off. Relay LAN de frames JPEG para el sidecar Windows (cursor glasses→PC). Si el flag está **on** y el DAT stream está live, un WebSocket escucha `0.0.0.0:8765` en **`/frames`**. Features muestra `ws://<wifi-ip>:8765/frames`. Mensajes de texto `{"ts_ms":number,"w":number,"h":number}` y binarios JPEG (~12 fps, quality 70). Se apaga con el flag o al Stop. El preview HEVC→Surface no cambia. Sin auth ni secrets. `voiceAssist` sigue stub.
 - `voiceDevMode` — off. Cuando está on, los intents encolados se POSTean como JSON a una URL de webhook (campo en Features, persistido en los mismos prefs). La cola `IntentQueue` es in-memory. Smoke sin STT: Features → utterance + **Enqueue chat** (`source=chat`). **No hay wake word de Meta**; este es el path Dev hacia nuestro agente de código. Astra / secrets / APK install quedan fuera.
 
 ## Intent queue (path Dev)
@@ -124,7 +124,7 @@ El scheme de callback es `raybanmetadat`. Meta AI vuelve a la app por ese scheme
 
 ## Layout
 
-`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags y la galería Murdoku. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency`, `StreamSessionAnalytics` y `BoardCaptureMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
+`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags, la galería Murdoku y el endpoint Gaze LAN. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica el preview. `GazeBridge` + `GazeWsServer` retransmiten JPEG por `ws://<wifi-ip>:8765/frames` si `gazeBridge` está on. `Latency`, `StreamSessionAnalytics` y `BoardCaptureMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
 
 ## Docs
 

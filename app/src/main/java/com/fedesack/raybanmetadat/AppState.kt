@@ -33,6 +33,8 @@ data class AppState(
     val intentWebhookUrl: String = "",
     val queuedIntentCount: Int = 0,
     val lastIntentStatus: String? = null,
+    val gazeEndpoint: String? = null,
+    val gazeListening: Boolean = false,
 ) {
     val canOpenLive: Boolean
         get() = androidReady && (source == DeviceSource.MOCK || registered)

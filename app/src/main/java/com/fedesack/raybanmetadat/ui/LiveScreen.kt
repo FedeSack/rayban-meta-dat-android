@@ -139,6 +139,9 @@ fun LiveScreen(
             if (state.flags.voiceDevMode) {
                 DevModeChip()
             }
+            if (state.flags.gazeBridge) {
+                GazeLanChip(listening = state.gazeListening)
+            }
         }
         if (murdoku) {
             Text(
@@ -174,6 +177,8 @@ fun LiveScreen(
                 queuedIntentCount = state.queuedIntentCount,
                 onIntentWebhookUrlChange = onIntentWebhookUrlChange,
                 onEnqueueChat = onEnqueueChat,
+                gazeEndpoint = state.gazeEndpoint,
+                gazeListening = state.gazeListening,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
