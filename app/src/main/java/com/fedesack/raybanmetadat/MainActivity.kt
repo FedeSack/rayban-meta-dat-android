@@ -4,8 +4,10 @@ import android.Manifest.permission.BLUETOOTH
 import android.Manifest.permission.BLUETOOTH_CONNECT
 import android.Manifest.permission.CAMERA
 import android.Manifest.permission.INTERNET
+import android.graphics.Color
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.SystemBarStyle
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts.RequestMultiplePermissions
@@ -33,7 +35,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.dark(Color.TRANSPARENT),
+        )
         setContent {
             DatTheme {
                 val state by viewModel.state.collectAsStateWithLifecycle()
@@ -46,6 +51,7 @@ class MainActivity : ComponentActivity() {
                     onStop = viewModel::stopStream,
                     onSurface = viewModel::attachPreview,
                     onSurfaceGone = viewModel::detachPreview,
+                    onFlagChange = viewModel::setFlag,
                 )
             }
         }

@@ -3,6 +3,7 @@ package com.fedesack.raybanmetadat
 import android.app.Activity
 import android.app.Application
 import android.os.SystemClock
+import android.util.Log
 import android.view.Surface
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
@@ -32,7 +33,9 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
 class DatViewModel(application: Application) : AndroidViewModel(application) {
-    private val _state = MutableStateFlow(AppState())
+    private val flagsStore = FeatureFlagsStore(application)
+    private val analytics = StreamSessionAnalytics()
+    private val _state = MutableStateFlow(AppState(flags = flagsStore.load()))
     val state: StateFlow<AppState> = _state.asStateFlow()
 
     private var session: DeviceSession? = null
@@ -49,18 +52,43 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
 
     private val sink =
         FrameSink(
-            onPresented = { ptsUs, receivedMs ->
+            onPresented = { presented ->
                 val now = SystemClock.elapsedRealtime()
-                val reading = Latency.reading(ptsUs, now, receivedMs)
+                val reading = Latency.reading(presented.presentationTimeUs, now, presented.receivedElapsedMs)
+                val count = analytics.onPresented(now, reading)
                 _state.update {
                     it.copy(
                         latencyMs = reading.millis,
                         latencyMode = reading.mode,
                         hasFrame = true,
+                        awaitingFirstFrame = false,
+                        analytics = analytics.snapshot(),
                     )
                 }
+                if (count == 1L) {
+                    logSnapshot("first_frame")
+                } else if (_state.value.flags.verboseLogcat && count % 24L == 0L) {
+                    logSnapshot("stats")
+                }
             },
-            onFirstFrame = { _state.update { it.copy(hasFrame = true) } },
+            onFirstFrame = { _state.update { it.copy(hasFrame = true, awaitingFirstFrame = false) } },
+            onQueueDrop = {
+                val now = SystemClock.elapsedRealtime()
+                analytics.onQueueDrop(now)
+                if (_state.value.flags.verboseLogcat) {
+                    logAnalytics("drop", mapOf("atMs" to now))
+                }
+            },
+            onDecodeError = { message ->
+                analytics.onDecodeError(SystemClock.elapsedRealtime(), message)
+                logAnalytics("decode_error", mapOf("msg" to message))
+            },
+            onDecoderFormat = { width, height ->
+                analytics.onDecoderOutput(width, height, SystemClock.elapsedRealtime())
+                if (_state.value.flags.verboseLogcat) {
+                    logAnalytics("decoder_out", mapOf("w" to width, "h" to height))
+                }
+            },
         )
 
     fun onAndroidPermissions(granted: Boolean) {
@@ -127,6 +155,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         session?.stop()
         clearSession()
         sink.detach()
+        analytics.stop(SystemClock.elapsedRealtime())
         _state.update {
             it.copy(
                 phase = Phase.CONNECT,
@@ -135,6 +164,8 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 latencyMs = null,
                 latencyMode = null,
                 hasFrame = false,
+                awaitingFirstFrame = false,
+                analytics = AnalyticsSnapshot(),
             )
         }
     }
@@ -147,20 +178,47 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         sink.detach()
     }
 
+    fun setFlag(
+        flag: FeatureFlag,
+        enabled: Boolean,
+    ) {
+        val next = flagsStore.set(flag, enabled)
+        _state.update { it.copy(flags = next) }
+        logAnalytics(
+            "flag",
+            mapOf(
+                "name" to flag.key,
+                "on" to enabled,
+                "stub" to flag.stub,
+            ),
+        )
+    }
+
     fun onWearableCameraPermission(status: PermissionStatus) {
         if (status == PermissionStatus.Granted || _state.value.source == DeviceSource.MOCK) {
             startStream()
         } else {
-            _state.update { it.copy(message = "Cámara de lentes denegada") }
+            _state.update {
+                it.copy(
+                    message = "Cámara de lentes denegada",
+                    awaitingFirstFrame = false,
+                )
+            }
         }
     }
 
     fun onStartClicked(requestWearableCamera: () -> Unit) {
         viewModelScope.launch {
             if (_state.value.session != DeviceSessionState.STARTED) {
-                _state.update { it.copy(message = "La sesión todavía no está STARTED") }
+                _state.update {
+                    it.copy(
+                        message = "La sesión todavía no está STARTED",
+                        awaitingFirstFrame = false,
+                    )
+                }
                 return@launch
             }
+            beginAwaitingFirstFrame()
             if (_state.value.source == DeviceSource.MOCK) {
                 startStream()
                 return@launch
@@ -175,7 +233,12 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                         }
                     },
                     onFailure = { error, _ ->
-                        _state.update { it.copy(message = error.description) }
+                        _state.update {
+                            it.copy(
+                                message = error.description,
+                                awaitingFirstFrame = false,
+                            )
+                        }
                     },
                 )
         }
@@ -183,8 +246,40 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun stopStream() {
         val current = camera ?: return
-        _state.update { it.copy(stream = StreamState.STOPPING) }
+        _state.update { it.copy(stream = StreamState.STOPPING, awaitingFirstFrame = false) }
         current.stop()
+    }
+
+    private fun beginAwaitingFirstFrame() {
+        val now = SystemClock.elapsedRealtime()
+        analytics.start(
+            atElapsedMs = now,
+            configuredQuality = CONFIGURED_QUALITY,
+            configuredFps = CONFIGURED_FPS,
+            compressVideo = CONFIGURED_COMPRESS,
+        )
+        analytics.onSessionState(_state.value.session.name, now)
+        analytics.onStreamState(_state.value.stream.name, now)
+        _state.update {
+            it.copy(
+                awaitingFirstFrame = true,
+                message = null,
+                hasFrame = false,
+                latencyMs = null,
+                latencyMode = null,
+                analytics = analytics.snapshot(),
+            )
+        }
+        logAnalytics(
+            "start",
+            mapOf(
+                "session" to _state.value.session.name,
+                "stream" to _state.value.stream.name,
+                "cfgQuality" to CONFIGURED_QUALITY,
+                "cfgFps" to CONFIGURED_FPS,
+                "compress" to CONFIGURED_COMPRESS,
+            ),
+        )
     }
 
     private fun startMonitoring() {
@@ -219,7 +314,15 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 sessionJob =
                     viewModelScope.launch {
                         created.state.collect { value ->
-                            _state.update { it.copy(session = value) }
+                            val now = SystemClock.elapsedRealtime()
+                            analytics.onSessionState(value.name, now)
+                            _state.update {
+                                it.copy(
+                                    session = value,
+                                    analytics = analytics.snapshot(),
+                                )
+                            }
+                            logAnalytics("session", mapOf("state" to value.name))
                             if (value == DeviceSessionState.STOPPED) {
                                 clearSession()
                             }
@@ -228,7 +331,12 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 sessionErrorJob =
                     viewModelScope.launch {
                         created.errors.collect { error ->
-                            _state.update { it.copy(message = error.description) }
+                            _state.update {
+                                it.copy(
+                                    message = error.description,
+                                    awaitingFirstFrame = false,
+                                )
+                            }
                         }
                     }
                 created.start()
@@ -245,8 +353,8 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             .addCamera(
                 StreamConfiguration(
                     videoQuality = VideoQuality.HIGH,
-                    frameRate = 24,
-                    compressVideo = true,
+                    frameRate = CONFIGURED_FPS,
+                    compressVideo = CONFIGURED_COMPRESS,
                 ),
             )
             .onSuccess { added ->
@@ -255,12 +363,22 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 stream = addedStream
                 listen(addedStream)
                 addedStream.start().onFailure { error, _ ->
-                    _state.update { it.copy(message = error.description) }
+                    _state.update {
+                        it.copy(
+                            message = error.description,
+                            awaitingFirstFrame = false,
+                        )
+                    }
                     clearStream()
                 }
             }
             .onFailure { error, _ ->
-                _state.update { it.copy(message = error.description) }
+                _state.update {
+                    it.copy(
+                        message = error.description,
+                        awaitingFirstFrame = false,
+                    )
+                }
             }
     }
 
@@ -269,7 +387,15 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         streamJob =
             viewModelScope.launch {
                 active.state.collect { value ->
-                    _state.update { it.copy(stream = value) }
+                    val now = SystemClock.elapsedRealtime()
+                    analytics.onStreamState(value.name, now)
+                    _state.update {
+                        it.copy(
+                            stream = value,
+                            analytics = analytics.snapshot(),
+                        )
+                    }
+                    logAnalytics("stream", mapOf("state" to value.name))
                     val terminal = value == StreamState.STOPPED || value == StreamState.CLOSED
                     if (!terminal) {
                         seenActive = true
@@ -281,13 +407,45 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         streamErrorJob =
             viewModelScope.launch {
                 active.errorStream.collect { error ->
-                    _state.update { it.copy(message = error.description) }
+                    _state.update {
+                        it.copy(
+                            message = error.description,
+                            awaitingFirstFrame = false,
+                        )
+                    }
                 }
             }
         framesJob =
             viewModelScope.launch(frames) {
                 active.videoStream.collect { frame ->
-                    sink.render(frame, SystemClock.elapsedRealtime())
+                    val received = SystemClock.elapsedRealtime()
+                    val path = if (frame.isCompressed) DecodePath.HEVC else DecodePath.YUV
+                    val arrival = analytics.onFrameArrived(received, frame.width, frame.height, path)
+                    if (arrival.first) {
+                        logAnalytics(
+                            "first_arrival",
+                            mapOf(
+                                "ttaMs" to analytics.snapshot().timeToFirstArrivalMs,
+                                "w" to frame.width,
+                                "h" to frame.height,
+                                "path" to path.name,
+                            ),
+                        )
+                    }
+                    if (arrival.resolutionChanged) {
+                        logAnalytics(
+                            "resolution",
+                            mapOf(
+                                "w" to frame.width,
+                                "h" to frame.height,
+                                "path" to path.name,
+                            ),
+                        )
+                    }
+                    if (!_state.value.hasFrame) {
+                        _state.update { it.copy(analytics = analytics.snapshot()) }
+                    }
+                    sink.render(frame, received)
                 }
             }
     }
@@ -302,12 +460,18 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         camera?.close()
         camera = null
         stream = null
+        val summary = analytics.stop(SystemClock.elapsedRealtime())
+        if (summary != null) {
+            logAnalytics("stop", summary.toFields())
+        }
         _state.update {
             it.copy(
                 stream = StreamState.STOPPED,
                 latencyMs = null,
                 latencyMode = null,
                 hasFrame = false,
+                awaitingFirstFrame = false,
+                analytics = analytics.snapshot(),
             )
         }
     }
@@ -320,6 +484,33 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         session = null
     }
 
+    private fun logSnapshot(event: String) {
+        val snap = analytics.snapshot()
+        logAnalytics(
+            event,
+            mapOf(
+                "latencyMs" to snap.latencyMs,
+                "mode" to snap.latencyMode?.name,
+                "fps" to snap.estimatedFps,
+                "gapMs" to snap.interArrivalMs,
+                "ttffMs" to snap.timeToFirstFrameMs,
+                "arrived" to snap.framesArrived,
+                "presented" to snap.framesPresented,
+                "w" to snap.width,
+                "h" to snap.height,
+                "path" to snap.decodePath?.name,
+                "drops" to snap.queueDrops,
+            ),
+        )
+    }
+
+    private fun logAnalytics(
+        event: String,
+        fields: Map<String, Any?> = emptyMap(),
+    ) {
+        Log.i(AnalyticsLog.TAG, AnalyticsLog.line(event, fields))
+    }
+
     override fun onCleared() {
         camera?.stop()
         clearStream()
@@ -328,5 +519,11 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         sink.detach()
         mockKit?.disable()
         super.onCleared()
+    }
+
+    companion object {
+        private const val CONFIGURED_QUALITY = "HIGH"
+        private const val CONFIGURED_FPS = 24
+        private const val CONFIGURED_COMPRESS = true
     }
 }

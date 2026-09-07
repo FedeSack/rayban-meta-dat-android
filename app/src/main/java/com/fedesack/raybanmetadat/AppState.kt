@@ -24,7 +24,10 @@ data class AppState(
     val latencyMs: Long? = null,
     val latencyMode: LatencyMode? = null,
     val hasFrame: Boolean = false,
+    val awaitingFirstFrame: Boolean = false,
     val message: String? = null,
+    val analytics: AnalyticsSnapshot = AnalyticsSnapshot(),
+    val flags: FeatureFlags = FeatureFlags(),
 ) {
     val canOpenLive: Boolean
         get() = androidReady && (source == DeviceSource.MOCK || registered)
