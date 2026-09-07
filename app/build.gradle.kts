@@ -8,12 +8,12 @@ plugins {
 
 android {
     namespace = "com.fedesack.raybanmetadat"
-    compileSdk = 36
+    compileSdk = 34
 
     defaultConfig {
         applicationId = "com.fedesack.raybanmetadat"
         minSdk = 31
-        targetSdk = 36
+        targetSdk = 34
         versionCode = 1
         versionName = "0.1.0"
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
