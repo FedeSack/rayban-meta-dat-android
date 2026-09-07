@@ -27,7 +27,4 @@ data class AppState(
 ) {
     val canOpenLive: Boolean
         get() = androidReady && (source == DeviceSource.MOCK || registered)
-
-    val streamLive: Boolean
-        get() = stream == StreamState.STREAMING
 }
