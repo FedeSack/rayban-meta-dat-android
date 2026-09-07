@@ -84,6 +84,7 @@ class FeatureFlagsTest {
         assertFalse(flags.preferSharpness)
         assertFalse(flags.murdokuHqCapture)
         assertTrue(flags.gazeBridge)
+        assertFalse(flags.streamConfig().compressVideo)
         assertFalse(flags.voiceAssist)
         assertFalse(flags.voiceDevMode)
         assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
@@ -129,6 +130,52 @@ class FeatureFlagsTest {
         assertEquals("MEDIUM", flags.streamConfig().qualityName)
         assertEquals(30, flags.streamConfig().fps)
         assertTrue(flags.streamConfig().preferSharpness)
+        assertTrue(flags.streamConfig().compressVideo)
+    }
+
+    @Test
+    fun gazeBridgeForcesUncompressedYuvWithoutMutatingSavedQuality() {
+        val stored =
+            FeatureFlags(
+                gazeBridge = true,
+                videoQuality = VideoQualityFlag.LOW,
+                frameRate = FrameRateFlag.FPS_30,
+            )
+        val config = stored.streamConfig()
+        assertTrue(stored.gazeBridge)
+        assertEquals(VideoQualityFlag.LOW, stored.videoQuality)
+        assertEquals(FrameRateFlag.FPS_30, stored.frameRate)
+        assertEquals(VideoQualityFlag.LOW, config.quality)
+        assertEquals(FrameRateFlag.FPS_30, config.frameRate)
+        assertFalse(config.compressVideo)
+        assertFalse(config.murdokuHq)
+        val off = FeatureFlagsCatalog.apply(stored, FeatureFlag.GAZE_BRIDGE, enabled = false)
+        assertFalse(off.gazeBridge)
+        assertTrue(off.streamConfig().compressVideo)
+        assertEquals("LOW", off.streamConfig().qualityName)
+        assertEquals(30, off.streamConfig().fps)
+    }
+
+    @Test
+    fun gazeBridgeForcesYuvEvenWhenMurdokuHqOwnsQualityAndFps() {
+        val both =
+            FeatureFlags(
+                gazeBridge = true,
+                murdokuHqCapture = true,
+                videoQuality = VideoQualityFlag.LOW,
+                frameRate = FrameRateFlag.FPS_30,
+            )
+        val config = both.streamConfig()
+        assertEquals(VideoQualityFlag.HIGH, config.quality)
+        assertEquals(FrameRateFlag.FPS_15, config.frameRate)
+        assertTrue(config.preferSharpness)
+        assertTrue(config.murdokuHq)
+        assertFalse(config.compressVideo)
+        val murdokuOnly = FeatureFlagsCatalog.apply(both, FeatureFlag.GAZE_BRIDGE, enabled = false)
+        assertTrue(murdokuOnly.murdokuHqCapture)
+        assertTrue(murdokuOnly.streamConfig().compressVideo)
+        assertEquals("HIGH", murdokuOnly.streamConfig().qualityName)
+        assertEquals(15, murdokuOnly.streamConfig().fps)
     }
 
     @Test
