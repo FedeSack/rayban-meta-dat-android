@@ -82,6 +82,28 @@ class StreamAnalyticsTest {
     }
 
     @Test
+    fun startRecordsConfiguredQualityAndFpsFromCaller() {
+        val analytics = StreamSessionAnalytics()
+        analytics.start(5L, configuredQuality = "LOW", configuredFps = 15, compressVideo = true)
+        val snap = analytics.snapshot()
+        assertEquals("LOW", snap.configuredQuality)
+        assertEquals(15, snap.configuredFps)
+        assertEquals(true, snap.compressVideo)
+        assertTrue(snap.running)
+        val line =
+            AnalyticsLog.line(
+                "start",
+                mapOf(
+                    "cfgQuality" to snap.configuredQuality,
+                    "cfgFps" to snap.configuredFps,
+                    "compress" to snap.compressVideo,
+                    "preferSharpness" to true,
+                ),
+            )
+        assertEquals("start cfgQuality=LOW cfgFps=15 compress=true preferSharpness=true", line)
+    }
+
+    @Test
     fun startResetsPreviousSession() {
         val analytics = StreamSessionAnalytics()
         analytics.start(0L, "HIGH", 24, true)

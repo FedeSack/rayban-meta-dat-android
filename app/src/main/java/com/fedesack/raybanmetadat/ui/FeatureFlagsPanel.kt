@@ -6,9 +6,12 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
@@ -20,6 +23,8 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.fedesack.raybanmetadat.FeatureFlag
 import com.fedesack.raybanmetadat.FeatureFlags
+import com.fedesack.raybanmetadat.FrameRateFlag
+import com.fedesack.raybanmetadat.VideoQualityFlag
 
 @Composable
 fun FeaturesToggle(
@@ -42,15 +47,20 @@ fun FeaturesToggle(
 fun FeatureFlagsPanel(
     flags: FeatureFlags,
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
+    onVideoQualityChange: (VideoQualityFlag) -> Unit,
+    onFrameRateChange: (FrameRateFlag) -> Unit,
+    live: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
     Column(
         modifier =
             modifier
-                .widthIn(max = 280.dp)
+                .widthIn(max = 300.dp)
+                .heightIn(max = 520.dp)
+                .verticalScroll(rememberScrollState())
                 .background(DatTokens.panel, RoundedCornerShape(12.dp))
                 .padding(horizontal = 14.dp, vertical = 12.dp),
-        verticalArrangement = Arrangement.spacedBy(4.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text(
             text = "Features",
@@ -64,7 +74,42 @@ fun FeatureFlagsPanel(
                     fontSize = 11.sp,
                     lineHeight = 14.sp,
                 ),
-            modifier = Modifier.padding(bottom = 4.dp),
+        )
+        ChoiceRow(
+            title = "Video quality",
+            subtitle = "HIGH 720×1280 · MED 504×896 · LOW 360×640",
+            options = VideoQualityFlag.entries,
+            selected = flags.videoQuality,
+            label = { it.name },
+            onSelect = onVideoQualityChange,
+        )
+        ChoiceRow(
+            title = "Frame rate",
+            subtitle = "DAT accepts 15 / 24 / 30. Default 24.",
+            options = FrameRateFlag.entries,
+            selected = flags.frameRate,
+            label = { it.fps.toString() },
+            onSelect = onFrameRateChange,
+        )
+        Text(
+            text =
+                if (live) {
+                    "Live changes stop and restart the stream."
+                } else {
+                    "Applied on Start."
+                },
+            style =
+                MaterialTheme.typography.labelMedium.copy(
+                    color = DatTokens.muted,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                ),
+        )
+        FlagRow(
+            title = "Prefer sharpness",
+            subtitle = "Meta: lower res/fps can look sharper under BT pressure",
+            checked = flags.preferSharpness,
+            onCheckedChange = { onFlagChange(FeatureFlag.PREFER_SHARPNESS, it) },
         )
         FlagRow(
             title = "Analytics overlay",
@@ -90,6 +135,49 @@ fun FeatureFlagsPanel(
             checked = flags.voiceAssist,
             onCheckedChange = { onFlagChange(FeatureFlag.VOICE_ASSIST, it) },
         )
+    }
+}
+
+@Composable
+private fun <T> ChoiceRow(
+    title: String,
+    subtitle: String,
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Text(text = title, style = MaterialTheme.typography.labelMedium)
+        Text(
+            text = subtitle,
+            style =
+                MaterialTheme.typography.labelMedium.copy(
+                    color = DatTokens.muted,
+                    fontSize = 11.sp,
+                    lineHeight = 14.sp,
+                ),
+        )
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            options.forEach { option ->
+                val on = option == selected
+                Text(
+                    text = label(option),
+                    style = MaterialTheme.typography.labelMedium,
+                    modifier =
+                        Modifier
+                            .background(
+                                if (on) DatTokens.accent else DatTokens.surface,
+                                RoundedCornerShape(8.dp),
+                            )
+                            .clickable { onSelect(option) }
+                            .padding(horizontal = 10.dp, vertical = 6.dp),
+                )
+            }
+        }
     }
 }
 

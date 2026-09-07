@@ -33,8 +33,10 @@ import androidx.compose.ui.unit.sp
 import com.fedesack.raybanmetadat.AnalyticsSnapshot
 import com.fedesack.raybanmetadat.AppState
 import com.fedesack.raybanmetadat.FeatureFlag
+import com.fedesack.raybanmetadat.FrameRateFlag
 import com.fedesack.raybanmetadat.LatencyMode
 import com.fedesack.raybanmetadat.StreamAnalyticsMath
+import com.fedesack.raybanmetadat.VideoQualityFlag
 import com.meta.wearable.dat.camera.types.StreamState
 import com.meta.wearable.dat.core.session.DeviceSessionState
 
@@ -47,6 +49,8 @@ fun LiveScreen(
     onSurface: (Surface) -> Unit,
     onSurfaceGone: () -> Unit,
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
+    onVideoQualityChange: (VideoQualityFlag) -> Unit,
+    onFrameRateChange: (FrameRateFlag) -> Unit,
 ) {
     var showFlags by remember { mutableStateOf(false) }
     var analyticsExpanded by remember { mutableStateOf(false) }
@@ -118,7 +122,10 @@ fun LiveScreen(
         if (showFlags) {
             FeatureFlagsPanel(
                 flags = state.flags,
+                live = streaming || waking,
                 onFlagChange = onFlagChange,
+                onVideoQualityChange = onVideoQualityChange,
+                onFrameRateChange = onFrameRateChange,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)

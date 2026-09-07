@@ -52,6 +52,8 @@ class MainActivity : ComponentActivity() {
                     onSurface = viewModel::attachPreview,
                     onSurfaceGone = viewModel::detachPreview,
                     onFlagChange = viewModel::setFlag,
+                    onVideoQualityChange = viewModel::setVideoQuality,
+                    onFrameRateChange = viewModel::setFrameRate,
                 )
             }
         }

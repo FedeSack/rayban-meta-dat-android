@@ -33,7 +33,9 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import com.fedesack.raybanmetadat.AppState
 import com.fedesack.raybanmetadat.FeatureFlag
+import com.fedesack.raybanmetadat.FrameRateFlag
 import com.fedesack.raybanmetadat.R
+import com.fedesack.raybanmetadat.VideoQualityFlag
 
 @Composable
 fun ConnectScreen(
@@ -41,6 +43,8 @@ fun ConnectScreen(
     onRegister: () -> Unit,
     onMock: () -> Unit,
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
+    onVideoQualityChange: (VideoQualityFlag) -> Unit,
+    onFrameRateChange: (FrameRateFlag) -> Unit,
 ) {
     var showFlags by remember { mutableStateOf(false) }
     val connected = state.registered
@@ -125,6 +129,8 @@ fun ConnectScreen(
             FeatureFlagsPanel(
                 flags = state.flags,
                 onFlagChange = onFlagChange,
+                onVideoQualityChange = onVideoQualityChange,
+                onFrameRateChange = onFrameRateChange,
                 modifier =
                     Modifier
                         .align(Alignment.TopEnd)
