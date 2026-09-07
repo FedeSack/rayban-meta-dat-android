@@ -1,10 +1,6 @@
 package com.fedesack.raybanmetadat
 
 import android.graphics.Bitmap
-import android.graphics.BitmapFactory
-import android.graphics.ImageFormat
-import android.graphics.Rect
-import android.graphics.YuvImage
 import android.media.MediaCodec
 import android.media.MediaFormat
 import android.os.Handler
@@ -13,7 +9,6 @@ import android.os.Process
 import android.os.SystemClock
 import android.view.Surface
 import com.meta.wearable.dat.camera.types.VideoFrame
-import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
 import java.util.ArrayDeque
 import java.util.concurrent.LinkedBlockingQueue
@@ -194,11 +189,8 @@ class FrameSink(
         dest: Surface,
         receivedElapsedMs: Long,
     ) {
-        val nv21 = i420ToNv21(frame.buffer, frame.width, frame.height)
-        val yuv = YuvImage(nv21, ImageFormat.NV21, frame.width, frame.height, null)
-        val jpeg = ByteArrayOutputStream()
-        yuv.compressToJpeg(Rect(0, 0, frame.width, frame.height), 80, jpeg)
-        val bitmap = BitmapFactory.decodeByteArray(jpeg.toByteArray(), 0, jpeg.size()) ?: return
+        val bitmap =
+            YuvJpeg.decodeBitmap(frame.buffer, frame.width, frame.height, YuvJpeg.PREVIEW_QUALITY) ?: return
         drawBitmap(dest, bitmap)
         markPresented(frame.presentationTimeUs, receivedElapsedMs)
     }
@@ -243,34 +235,5 @@ class FrameSink(
         )
     }
 
-    private fun copyBuffer(buffer: ByteBuffer): ByteArray {
-        val duplicate = buffer.duplicate()
-        val bytes = ByteArray(duplicate.remaining())
-        duplicate.get(bytes)
-        return bytes
-    }
-
-    private fun i420ToNv21(
-        buffer: ByteBuffer,
-        width: Int,
-        height: Int,
-    ): ByteArray {
-        val ySize = width * height
-        val cSize = ySize / 4
-        val src = buffer.duplicate()
-        val nv21 = ByteArray(ySize + cSize * 2)
-        src.get(nv21, 0, ySize)
-        val u = ByteArray(cSize)
-        val v = ByteArray(cSize)
-        if (src.remaining() >= cSize * 2) {
-            src.get(u)
-            src.get(v)
-        }
-        var o = ySize
-        for (i in 0 until cSize) {
-            nv21[o++] = v[i]
-            nv21[o++] = u[i]
-        }
-        return nv21
-    }
+    private fun copyBuffer(buffer: ByteBuffer): ByteArray = YuvJpeg.copyBuffer(buffer)
 }

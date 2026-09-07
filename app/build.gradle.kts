@@ -49,6 +49,7 @@ android {
 kotlin { compilerOptions { jvmTarget = JvmTarget.JVM_17 } }
 
 dependencies {
+    implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.material3)

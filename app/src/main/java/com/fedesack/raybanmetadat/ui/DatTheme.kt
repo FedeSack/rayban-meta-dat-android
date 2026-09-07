@@ -53,6 +53,9 @@ object DatTokens {
     val latencyPadV = 8.dp
     val latencyRadius = 10.dp
     val startW = 345.dp
+    val murdokuCtaH = 60.dp
+    val galleryH = 72.dp
+    val thumb = 64.dp
 }
 
 private val Palette =

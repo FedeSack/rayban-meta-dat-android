@@ -42,6 +42,7 @@ fun ConnectScreen(
     state: AppState,
     onRegister: () -> Unit,
     onMock: () -> Unit,
+    onMurdoku: () -> Unit,
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
     onVideoQualityChange: (VideoQualityFlag) -> Unit,
     onFrameRateChange: (FrameRateFlag) -> Unit,
@@ -116,6 +117,21 @@ fun ConnectScreen(
                     modifier = Modifier.fillMaxWidth(),
                 )
                 DatButton(
+                    label = "Modo Murdoku",
+                    primary = false,
+                    enabled = state.androidReady,
+                    onClick = onMurdoku,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                if (state.flags.murdokuHqCapture) {
+                    Text(
+                        text = "HQ capture · HIGH 15 fps · solver, no live HUD",
+                        style = MaterialTheme.typography.labelMedium.copy(color = DatTokens.muted),
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+                DatButton(
                     label = "Use Mock Device",
                     primary = false,
                     enabled = state.androidReady,
@@ -186,7 +202,7 @@ fun DatButton(
     Button(
         onClick = onClick,
         enabled = enabled,
-        modifier = modifier.height(DatTokens.buttonH),
+        modifier = Modifier.height(DatTokens.buttonH).then(modifier),
         shape = RoundedCornerShape(DatTokens.buttonRadius),
         contentPadding = PaddingValues(horizontal = 20.dp),
         elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),

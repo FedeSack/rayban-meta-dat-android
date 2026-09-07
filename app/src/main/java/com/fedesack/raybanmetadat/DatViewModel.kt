@@ -12,6 +12,7 @@ import com.meta.wearable.dat.camera.Stream
 import com.meta.wearable.dat.camera.addCamera
 import com.meta.wearable.dat.camera.types.StreamConfiguration
 import com.meta.wearable.dat.camera.types.StreamState
+import com.meta.wearable.dat.camera.types.VideoFrame
 import com.meta.wearable.dat.camera.types.VideoQuality
 import com.meta.wearable.dat.core.Wearables
 import com.meta.wearable.dat.core.selectors.AutoDeviceSelector
@@ -34,8 +35,16 @@ import kotlinx.coroutines.launch
 
 class DatViewModel(application: Application) : AndroidViewModel(application) {
     private val flagsStore = FeatureFlagsStore(application)
+    private val captureStore = BoardCaptureStore(application)
+    private val captureWriter = BoardCaptureWriter(application)
     private val analytics = StreamSessionAnalytics()
-    private val _state = MutableStateFlow(AppState(flags = flagsStore.load()))
+    private val _state =
+        MutableStateFlow(
+            AppState(
+                flags = flagsStore.load(),
+                captures = captureStore.load(),
+            ),
+        )
     val state: StateFlow<AppState> = _state.asStateFlow()
 
     private var session: DeviceSession? = null
@@ -49,6 +58,8 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     private var framesJob: Job? = null
     private var monitoring = false
     private val frames = Dispatchers.Default.limitedParallelism(1)
+    private val lastFrameLock = Any()
+    private var lastRawFrame: RawStreamFrame? = null
 
     private val sink =
         FrameSink(
@@ -192,6 +203,66 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 "stub" to flag.stub,
             ),
         )
+        if (flag == FeatureFlag.MURDOKU_HQ_CAPTURE) {
+            restartLiveStreamIfNeeded()
+        }
+    }
+
+    fun enableMurdokuAndConnect(activity: Activity) {
+        if (!_state.value.flags.murdokuHqCapture) {
+            setFlag(FeatureFlag.MURDOKU_HQ_CAPTURE, true)
+        }
+        register(activity)
+    }
+
+    fun captureBoard() {
+        if (_state.value.capturing) return
+        val active = stream
+        if (active == null || _state.value.stream != StreamState.STREAMING) {
+            _state.update { it.copy(message = "Start el stream para capturar") }
+            return
+        }
+        viewModelScope.launch(Dispatchers.IO) {
+            _state.update { it.copy(capturing = true, message = null) }
+            val takenAtMs = System.currentTimeMillis()
+            var saved: BoardCapture? = null
+            var captureError: String? = null
+            active.capturePhoto()
+                .onSuccess { photo ->
+                    saved =
+                        runCatching { captureWriter.savePhoto(photo, takenAtMs) }
+                            .onFailure { error -> captureError = error.message }
+                            .getOrNull()
+                }
+                .onFailure { error, _ ->
+                    captureError = error.description
+                }
+            if (saved == null) {
+                saved = saveLastYuvFrame(takenAtMs)
+            }
+            val capture = saved
+            if (capture != null) {
+                val next = BoardCaptureMath.prepend(_state.value.captures, capture)
+                captureStore.save(next)
+                _state.update { it.copy(captures = next, capturing = false, message = null) }
+                logAnalytics(
+                    "murdoku_capture",
+                    mapOf(
+                        "source" to capture.source.name,
+                        "mime" to capture.mime,
+                        "w" to capture.width,
+                        "h" to capture.height,
+                    ),
+                )
+            } else {
+                _state.update {
+                    it.copy(
+                        capturing = false,
+                        message = captureError ?: "No se pudo capturar el tablero",
+                    )
+                }
+            }
+        }
     }
 
     fun setVideoQuality(quality: VideoQualityFlag) {
@@ -296,6 +367,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 "cfgFps" to config.fps,
                 "compress" to config.compressVideo,
                 "preferSharpness" to config.preferSharpness,
+                "murdokuHq" to config.murdokuHq,
             ),
         )
     }
@@ -501,6 +573,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                     if (!_state.value.hasFrame) {
                         _state.update { it.copy(analytics = analytics.snapshot()) }
                     }
+                    rememberFrame(frame)
                     sink.render(frame, received)
                 }
             }
@@ -520,6 +593,30 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    private fun rememberFrame(frame: VideoFrame) {
+        if (!_state.value.flags.murdokuHqCapture) return
+        if (frame.isCodecConfig) return
+        synchronized(lastFrameLock) {
+            lastRawFrame =
+                RawStreamFrame(
+                    bytes = YuvJpeg.copyBuffer(frame.buffer),
+                    width = frame.width,
+                    height = frame.height,
+                    compressed = frame.isCompressed,
+                )
+        }
+    }
+
+    private fun saveLastYuvFrame(takenAtMs: Long): BoardCapture? {
+        val raw =
+            synchronized(lastFrameLock) { lastRawFrame }
+                ?: return null
+        if (raw.compressed) return null
+        return runCatching {
+            captureWriter.saveYuvFrame(raw.bytes, raw.width, raw.height, takenAtMs)
+        }.getOrNull()
+    }
+
     private fun releaseStream(reason: String) {
         framesJob?.cancel()
         streamJob?.cancel()
@@ -527,6 +624,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         framesJob = null
         streamJob = null
         streamErrorJob = null
+        synchronized(lastFrameLock) { lastRawFrame = null }
         runCatching { camera?.stop() }
         camera?.close()
         camera = null
@@ -582,3 +680,10 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         super.onCleared()
     }
 }
+
+private data class RawStreamFrame(
+    val bytes: ByteArray,
+    val width: Int,
+    val height: Int,
+    val compressed: Boolean,
+)

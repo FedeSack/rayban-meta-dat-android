@@ -28,6 +28,8 @@ data class AppState(
     val message: String? = null,
     val analytics: AnalyticsSnapshot = AnalyticsSnapshot(),
     val flags: FeatureFlags = FeatureFlags(),
+    val captures: List<BoardCapture> = emptyList(),
+    val capturing: Boolean = false,
 ) {
     val canOpenLive: Boolean
         get() = androidReady && (source == DeviceSource.MOCK || registered)

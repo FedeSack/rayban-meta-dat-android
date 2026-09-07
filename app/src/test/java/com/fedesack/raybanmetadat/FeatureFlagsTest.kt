@@ -12,6 +12,7 @@ class FeatureFlagsTest {
         assertFalse(flags.analyticsOverlay)
         assertFalse(flags.verboseLogcat)
         assertFalse(flags.preferSharpness)
+        assertFalse(flags.murdokuHqCapture)
         assertFalse(flags.gazeBridge)
         assertFalse(flags.voiceAssist)
         assertFalse(flags.voiceDevMode)
@@ -26,11 +27,13 @@ class FeatureFlagsTest {
         assertTrue(FeatureFlag.VOICE_DEV_MODE.stub)
         assertFalse(FeatureFlag.ANALYTICS_OVERLAY.stub)
         assertFalse(FeatureFlag.PREFER_SHARPNESS.stub)
+        assertFalse(FeatureFlag.MURDOKU_HQ_CAPTURE.stub)
         val config = flags.streamConfig()
         assertEquals("HIGH", config.qualityName)
         assertEquals(24, config.fps)
         assertTrue(config.compressVideo)
         assertFalse(config.preferSharpness)
+        assertFalse(config.murdokuHq)
     }
 
     @Test
@@ -44,6 +47,7 @@ class FeatureFlagsTest {
         assertTrue(next.analyticsOverlay)
         assertFalse(next.verboseLogcat)
         assertFalse(next.preferSharpness)
+        assertFalse(next.murdokuHqCapture)
         assertFalse(next.gazeBridge)
         assertFalse(next.voiceAssist)
         assertFalse(next.voiceDevMode)
@@ -78,6 +82,7 @@ class FeatureFlagsTest {
         assertTrue(flags.analyticsOverlay)
         assertFalse(flags.verboseLogcat)
         assertFalse(flags.preferSharpness)
+        assertFalse(flags.murdokuHqCapture)
         assertTrue(flags.gazeBridge)
         assertFalse(flags.voiceAssist)
         assertFalse(flags.voiceDevMode)
@@ -88,6 +93,7 @@ class FeatureFlagsTest {
                 "analyticsOverlay" to true,
                 "verboseLogcat" to false,
                 "preferSharpness" to false,
+                "murdokuHqCapture" to false,
                 "gazeBridge" to true,
                 "voiceAssist" to false,
                 "voiceDevMode" to false,
@@ -99,6 +105,7 @@ class FeatureFlagsTest {
                 "videoQuality" to "HIGH",
                 "frameRate" to 24,
                 "preferSharpness" to false,
+                "murdokuHqCapture" to false,
             ),
             FeatureFlagsCatalog.streamSettings(flags),
         )
@@ -183,5 +190,59 @@ class FeatureFlagsTest {
             )
         assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
         assertEquals(FrameRateFlag.FPS_24, flags.frameRate)
+    }
+
+    @Test
+    fun murdokuHqCaptureOverridesStreamToHigh15WithoutMutatingSavedQuality() {
+        val stored =
+            FeatureFlags(
+                murdokuHqCapture = true,
+                videoQuality = VideoQualityFlag.LOW,
+                frameRate = FrameRateFlag.FPS_30,
+                preferSharpness = false,
+            )
+        val config = stored.streamConfig()
+        assertTrue(stored.murdokuHqCapture)
+        assertEquals(VideoQualityFlag.LOW, stored.videoQuality)
+        assertEquals(FrameRateFlag.FPS_30, stored.frameRate)
+        assertEquals(VideoQualityFlag.HIGH, config.quality)
+        assertEquals(FrameRateFlag.FPS_15, config.frameRate)
+        assertEquals("HIGH", config.qualityName)
+        assertEquals(15, config.fps)
+        assertTrue(config.compressVideo)
+        assertTrue(config.preferSharpness)
+        assertTrue(config.murdokuHq)
+        assertEquals(
+            mapOf(
+                "videoQuality" to "HIGH",
+                "frameRate" to 15,
+                "preferSharpness" to true,
+                "murdokuHqCapture" to true,
+            ),
+            FeatureFlagsCatalog.streamSettings(stored),
+        )
+        val off = FeatureFlagsCatalog.apply(stored, FeatureFlag.MURDOKU_HQ_CAPTURE, enabled = false)
+        assertFalse(off.murdokuHqCapture)
+        assertEquals(VideoQualityFlag.LOW, off.videoQuality)
+        assertEquals(FrameRateFlag.FPS_30, off.frameRate)
+        assertEquals(30, off.streamConfig().fps)
+        assertEquals("LOW", off.streamConfig().qualityName)
+        assertFalse(off.streamConfig().murdokuHq)
+    }
+
+    @Test
+    fun fromStoredReadsMurdokuHqCapture() {
+        val flags =
+            FeatureFlagsCatalog.fromStoredValues(
+                mapOf(
+                    "murdokuHqCapture" to true,
+                    "videoQuality" to "LOW",
+                    "frameRate" to 30,
+                ),
+            )
+        assertTrue(flags.murdokuHqCapture)
+        assertEquals(VideoQualityFlag.LOW, flags.videoQuality)
+        assertEquals(15, flags.streamConfig().fps)
+        assertEquals("HIGH", flags.streamConfig().qualityName)
     }
 }
