@@ -38,15 +38,6 @@ data class GazeYuv(
     val nv21: Boolean = false,
 )
 
-data class GazeRawFrame(
-    val bytes: ByteArray,
-    val width: Int,
-    val height: Int,
-    val compressed: Boolean,
-    val codecConfig: Boolean,
-    val presentationTimeUs: Long,
-)
-
 data class LanInterface(
     val name: String,
     val up: Boolean,

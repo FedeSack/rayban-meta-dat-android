@@ -26,6 +26,7 @@ import com.meta.wearable.dat.mockdevice.MockDeviceKit
 import com.meta.wearable.dat.mockdevice.api.GlassesModel
 import com.meta.wearable.dat.mockdevice.api.MockDeviceKitInterface
 import com.meta.wearable.dat.mockdevice.api.camera.CameraFacing
+import java.util.concurrent.atomic.AtomicBoolean
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -51,6 +52,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             ),
         )
     val state: StateFlow<AppState> = _state.asStateFlow()
+    private val loggedCompressedGazeSkip = AtomicBoolean(false)
     private val intentEgress =
         IntentEgress(
             queue = intentQueue,
@@ -66,7 +68,15 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                     encodeYuv = { yuv ->
                         runCatching { YuvJpeg.encodeYuv(yuv, GazeWs.JPEG_QUALITY) }.getOrNull()
                     },
-                    hevc = GazeHevcDecoder(),
+                    onCompressedSkip = {
+                        if (loggedCompressedGazeSkip.compareAndSet(false, true)) {
+                            Log.i(
+                                "RaybanDat/Gaze",
+                                "skip compressed/HEVC frame for JPEG relay " +
+                                    "(YUV path only; HEVC side-decode removed)",
+                            )
+                        }
+                    },
                 ),
         )
 
@@ -785,6 +795,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         streamJob = null
         streamErrorJob = null
         synchronized(lastFrameLock) { lastRawFrame = null }
+        loggedCompressedGazeSkip.set(false)
         gaze.sync(flagOn = false, streamLive = false)
         publishGazeState()
         runCatching { camera?.stop() }

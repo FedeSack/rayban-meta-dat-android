@@ -184,71 +184,73 @@ class GazeJpegPipelineTest {
     }
 
     @Test
-    fun compressedFramesGoToHevcAndYuvSlotStaysEmptyUntilDecoded() {
-        val hevc = RecordingHevcSink()
+    fun compressedAndCodecConfigNeverCopyBytesOrEmitJpeg() {
+        var encodeCalls = 0
+        var byteCalls = 0
+        var skips = 0
         val pipeline =
             GazeJpegPipeline(
-                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
-                hevc = hevc,
+                encodeYuv = {
+                    encodeCalls++
+                    byteArrayOf(it.width.toByte())
+                },
                 nowMs = { 5_000L },
+                onCompressedSkip = { skips++ },
             )
         pipeline.start()
         pipeline.submit(720, 1280, compressed = true, codecConfig = true, presentationTimeUs = 0L) {
-            byteArrayOf(1, 2, 3)
+            byteCalls++
+            error("HEVC bytes must not be read")
         }
         pipeline.submit(720, 1280, compressed = true, codecConfig = false, presentationTimeUs = 40_000L) {
-            byteArrayOf(4, 5)
+            byteCalls++
+            error("HEVC bytes must not be read")
         }
-        assertEquals(2, hevc.offered.size)
-        assertTrue(hevc.offered[0].codecConfig)
+        pipeline.submit(640, 480, compressed = false, codecConfig = true, presentationTimeUs = 80_000L) {
+            byteCalls++
+            error("codec-config bytes must not be read")
+        }
+        assertEquals(3, skips)
+        assertEquals(0, byteCalls)
+        assertEquals(0, encodeCalls)
         assertNull(pipeline.poll())
-        hevc.latest = GazeYuv(ByteArray(4), 720, 1280, nv21 = true)
-        val encoded = pipeline.poll()
-        assertEquals(720, encoded!!.meta.w)
-        assertEquals(1280, encoded.meta.h)
         pipeline.stop()
-        assertTrue(hevc.stopped)
     }
 
     @Test
-    fun hevcOfferCrashDoesNotBlockYuvRelay() {
-        val hevc =
-            object : GazeHevcSink {
-                override fun offer(frame: GazeRawFrame) = throw RuntimeException("boom")
-
-                override fun latestYuv(): GazeYuv? = null
-
-                override fun start() = Unit
-
-                override fun stop() = Unit
-            }
+    fun compressedSkipDoesNotBlockLaterUncompressedYuvRelay() {
+        var compressedCalls = 0
         val pipeline =
             GazeJpegPipeline(
-                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
-                hevc = hevc,
+                encodeYuv = { yuv ->
+                    assertFalse("JPEG relay must not encode NV21 from ImageReader", yuv.nv21)
+                    byteArrayOf(yuv.width.toByte())
+                },
                 nowMs = { 2_000L },
             )
         pipeline.start()
         pipeline.submit(720, 1280, compressed = true, codecConfig = true, presentationTimeUs = 0L) {
-            byteArrayOf(1, 2, 3)
+            compressedCalls++
+            error("boom")
         }
         pipeline.submit(320, 240, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
             ByteArray(8)
         }
         val encoded = pipeline.poll()
+        assertEquals(0, compressedCalls)
         assertEquals(320, encoded!!.meta.w)
         assertEquals(240, encoded.meta.h)
         pipeline.stop()
     }
 
     @Test
-    fun yuvSlotWinsOverHevcSoSideDecodeFailureKeepsRelay() {
-        val hevc = RecordingHevcSink()
-        hevc.latest = GazeYuv(ByteArray(4), 99, 99, nv21 = true)
+    fun uncompressedYuvIsTheOnlyJpegSource() {
         val pipeline =
             GazeJpegPipeline(
-                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
-                hevc = hevc,
+                encodeYuv = { yuv ->
+                    assertFalse(yuv.nv21)
+                    byteArrayOf(yuv.width.toByte())
+                },
                 nowMs = { 3_000L },
             )
         pipeline.start()
@@ -258,29 +260,6 @@ class GazeJpegPipelineTest {
         val encoded = pipeline.poll()
         assertEquals(160, encoded!!.meta.w)
         assertEquals(120, encoded.meta.h)
-        pipeline.stop()
-    }
-
-    @Test
-    fun compressedCopyFailureDoesNotThrowOrBlockLaterYuv() {
-        var compressedCalls = 0
-        val pipeline =
-            GazeJpegPipeline(
-                encodeYuv = { yuv -> byteArrayOf(yuv.width.toByte()) },
-                hevc = RecordingHevcSink(),
-                nowMs = { 4_500L },
-            )
-        pipeline.start()
-        pipeline.submit(720, 1280, compressed = true, codecConfig = false, presentationTimeUs = 1L) {
-            compressedCalls++
-            error("closed buffer")
-        }
-        pipeline.submit(64, 48, compressed = false, codecConfig = false, presentationTimeUs = 2L) {
-            ByteArray(4)
-        }
-        val encoded = pipeline.poll()
-        assertEquals(1, compressedCalls)
-        assertEquals(64, encoded!!.meta.w)
         pipeline.stop()
     }
 
@@ -369,6 +348,94 @@ class GazeBridgeGateTest {
         assertTrue(hub.binaries.firstOrNull()?.contentEquals(byteArrayOf(0xFF.toByte(), 0xD8.toByte())) == true)
         bridge.stop()
     }
+
+    @Test
+    fun compressedOnlyStreamStillStartsWsAndNeverEmitsJpeg() {
+        val hub = FakeHub()
+        hub.clients.set(1)
+        val encodeCalls = AtomicInteger(0)
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = {
+                    encodeCalls.incrementAndGet()
+                    byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+                },
+                nowMs = { 20_000L },
+            )
+        val bridge =
+            GazeBridge(
+                server = hub,
+                pipeline = pipeline,
+                wifiIp = { "10.0.0.8" },
+                sleeper = { Thread.sleep(2) },
+            )
+        bridge.sync(flagOn = true, streamLive = true)
+        assertTrue(hub.started)
+        assertTrue(hub.listening)
+        repeat(8) {
+            bridge.submit(720, 1280, compressed = true, codecConfig = it == 0, presentationTimeUs = it * 40_000L) {
+                error("compressed path must not read Image or HEVC bytes")
+            }
+            Thread.sleep(15)
+        }
+        assertEquals(0, encodeCalls.get())
+        assertTrue(hub.texts.isEmpty())
+        assertTrue(hub.binaries.isEmpty())
+        bridge.stop()
+    }
+}
+
+class GazeHevcPathSafetyTest {
+    @Test
+    fun gazeHevcDecoderClassIsGoneSoImageReaderCannotStart() {
+        try {
+            Class.forName("com.fedesack.raybanmetadat.GazeHevcDecoder")
+            throw AssertionError("GazeHevcDecoder must stay deleted")
+        } catch (_: ClassNotFoundException) {
+        }
+        try {
+            Class.forName("com.fedesack.raybanmetadat.GazeHevcSink")
+            throw AssertionError("GazeHevcSink must stay deleted")
+        } catch (_: ClassNotFoundException) {
+        }
+    }
+
+    @Test
+    fun productionGazePathNeverCallsYuv420888ToNv21OrImageReader() {
+        val root = gazeMainSourceRoot()
+        val decoder = java.io.File(root, "GazeHevcDecoder.kt")
+        assertFalse("GazeHevcDecoder.kt must not exist", decoder.exists())
+        val watched =
+            listOf(
+                "GazeJpegPipeline.kt",
+                "GazeBridge.kt",
+                "DatViewModel.kt",
+                "GazeWs.kt",
+                "GazeWsServer.kt",
+            )
+        watched.forEach { name ->
+            val text = java.io.File(root, name).readText()
+            assertFalse("$name must not call yuv420888ToNv21", text.contains("yuv420888ToNv21"))
+            assertFalse("$name must not import ImageReader", text.contains("android.media.ImageReader"))
+            assertFalse("$name must not construct ImageReader", text.contains("ImageReader.newInstance"))
+            assertFalse("$name must not call imageToNv21", text.contains("imageToNv21"))
+            assertFalse("$name must not construct GazeHevcDecoder", text.contains("GazeHevcDecoder("))
+        }
+        val yuv = java.io.File(root, "YuvJpeg.kt").readText()
+        assertTrue(yuv.contains("direct Image planes are unsafe"))
+    }
+
+    private fun gazeMainSourceRoot(): java.io.File {
+        val here = java.io.File(System.getProperty("user.dir") ?: ".")
+        val candidates =
+            listOf(
+                java.io.File(here, "src/main/java/com/fedesack/raybanmetadat"),
+                java.io.File(here, "app/src/main/java/com/fedesack/raybanmetadat"),
+                java.io.File(here.parentFile, "app/src/main/java/com/fedesack/raybanmetadat"),
+            )
+        return candidates.firstOrNull { it.isDirectory }
+            ?: throw AssertionError("gaze sources not found from ${here.absolutePath}")
+    }
 }
 
 class GazeWsServerLoopbackTest {
@@ -449,24 +516,6 @@ class GazeWsServerLoopbackTest {
             "Sec-WebSocket-Key: $key\r\n" +
             "Sec-WebSocket-Version: 13\r\n" +
             "\r\n"
-}
-
-private class RecordingHevcSink : GazeHevcSink {
-    val offered = mutableListOf<GazeRawFrame>()
-    var latest: GazeYuv? = null
-    var stopped = false
-
-    override fun offer(frame: GazeRawFrame) {
-        offered += frame
-    }
-
-    override fun latestYuv(): GazeYuv? = latest
-
-    override fun start() = Unit
-
-    override fun stop() {
-        stopped = true
-    }
 }
 
 private class FakeHub : GazeSocketHub {

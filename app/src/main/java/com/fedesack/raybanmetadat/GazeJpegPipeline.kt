@@ -2,28 +2,17 @@ package com.fedesack.raybanmetadat
 
 import java.util.concurrent.atomic.AtomicReference
 
-interface GazeHevcSink {
-    fun offer(frame: GazeRawFrame)
-
-    fun latestYuv(): GazeYuv?
-
-    fun start()
-
-    fun stop()
-}
-
 class GazeJpegPipeline(
     private val encodeYuv: (yuv: GazeYuv) -> ByteArray?,
-    private val hevc: GazeHevcSink? = null,
     private val nowMs: () -> Long = { System.currentTimeMillis() },
     private val intervalMs: Long = GazeWs.TARGET_INTERVAL_MS,
+    private val onCompressedSkip: (() -> Unit)? = null,
 ) {
     private val latestYuv = AtomicReference<GazeYuv?>(null)
     @Volatile private var lastAcceptMs = -1L
     @Volatile private var lastEmitMs = -1L
 
     fun start() {
-        hevc?.start()
         lastAcceptMs = -1L
         lastEmitMs = -1L
         latestYuv.set(null)
@@ -33,7 +22,6 @@ class GazeJpegPipeline(
         latestYuv.set(null)
         lastAcceptMs = -1L
         lastEmitMs = -1L
-        hevc?.stop()
     }
 
     fun submit(
@@ -46,16 +34,11 @@ class GazeJpegPipeline(
     ) {
         try {
             if (compressed || codecConfig) {
-                hevc?.offer(
-                    GazeRawFrame(
-                        bytes = bytes(),
-                        width = width,
-                        height = height,
-                        compressed = true,
-                        codecConfig = codecConfig,
-                        presentationTimeUs = presentationTimeUs,
-                    ),
-                )
+                // Never side-decode HEVC into ImageReader / YUV_420_888 planes.
+                // Samsung Tab S10 Lite (SM-X400) SIGSEGVs (SEGV_ACCERR) on
+                // DirectByteBuffer.get of MediaCodec ImageReader planes.
+                // JPEG relay uses uncompressed DAT VideoFrame YUV only.
+                onCompressedSkip?.invoke()
                 return
             }
             val now = nowMs()
@@ -63,14 +46,14 @@ class GazeJpegPipeline(
             lastAcceptMs = now
             latestYuv.set(GazeYuv(bytes(), width, height, nv21 = false))
         } catch (_: Throwable) {
-            // Side-decode / copy must never take down the live preview.
+            // Copy / encode must never take down the live preview.
         }
     }
 
     fun poll(): EncodedGaze? {
         val now = nowMs()
         if (!GazePace.due(now, lastEmitMs, intervalMs)) return null
-        val yuv = latestYuv.get() ?: hevc?.latestYuv() ?: return null
+        val yuv = latestYuv.get() ?: return null
         val jpeg =
             try {
                 encodeYuv(yuv)

@@ -72,7 +72,9 @@ class YuvJpegNv21Test {
     fun interleavedUvPixelStrideTwoMatchesMediaCodecNv21() {
         val vu = byteArrayOf(0xC0.toByte(), 0x80.toByte(), 0xC1.toByte(), 0x81.toByte())
         val v = ByteBuffer.wrap(vu)
-        val u = ByteBuffer.wrap(vu).position(1).slice()
+        val uOffset = ByteBuffer.wrap(vu)
+        uOffset.position(1)
+        val u = uOffset.slice()
         val nv21 =
             YuvJpeg.yuv420888ToNv21(
                 width = 4,
@@ -195,6 +197,22 @@ class YuvJpegNv21Test {
         assertEquals(4, YuvJpeg.planeAccessibleBytes(8, 1, 4, 1))
         assertEquals(12, YuvJpeg.planeAccessibleBytes(8, 1, 4, 2))
         assertEquals(11, YuvJpeg.planeAccessibleBytes(8, 2, 2, 2))
+    }
+
+    @Test(expected = IllegalArgumentException::class)
+    fun rejectsDirectByteBuffersSoImageReaderPlanesCannotSegv() {
+        YuvJpeg.yuv420888ToNv21(
+            width = 4,
+            height = 2,
+            y = ByteBuffer.allocateDirect(8),
+            yRowStride = 4,
+            u = bytes(1),
+            uRowStride = 2,
+            uPixelStride = 1,
+            v = bytes(1),
+            vRowStride = 2,
+            vPixelStride = 1,
+        )
     }
 
     @Test(expected = IllegalArgumentException::class)
