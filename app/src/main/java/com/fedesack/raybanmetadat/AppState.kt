@@ -22,6 +22,7 @@ data class AppState(
     val session: DeviceSessionState = DeviceSessionState.IDLE,
     val stream: StreamState = StreamState.STOPPED,
     val latencyMs: Long? = null,
+    val latencyMode: LatencyMode? = null,
     val hasFrame: Boolean = false,
     val message: String? = null,
 ) {

@@ -11,9 +11,9 @@ Solo el SDK oficial. No hay cámara web inventada ni scraping de Meta AI. Una PW
 Dos pantallas, oscuras y con poco chrome.
 
 1. **Conectar / registrar.** Registro con Meta AI, o Mock Device Kit sin hardware.
-2. **Preview.** Surface de frames + HUD `N ms` + Iniciar / Detener.
+2. **Preview.** Surface de frames + HUD `N ms` (con caption `pipeline` cuando aplica) + Iniciar / Detener.
 
-El dominio es el del SDK. `DeviceSessionState` es la sesión. `StreamState` es el stream. La app no remapea esas máquinas de estados. Configuración pedida: `VideoQuality.MEDIUM` a 24 fps. El API acepta 2, 7, 15, 24 o 30.
+El dominio es el del SDK. `DeviceSessionState` es la sesión. `StreamState` es el stream. La app no remapea esas máquinas de estados. Configuración pedida: `VideoQuality.HIGH` (720×1280) a 24 fps, `compressVideo = true`. El API acepta 2, 7, 15, 24 o 30.
 
 El preview HEVC va a un `Surface` via `MediaCodec`. Compose no copia cada frame. El fallback YUV (frames sin comprimir) dibuja sobre el mismo Surface.
 
@@ -31,9 +31,9 @@ Cuando Meta abra publicación, reemplazá los placeholders `0` por el Applicatio
 
 ## Cómo se mide la latencia
 
-El HUD muestra un solo número en ms.
+El HUD muestra el número en ms. Si el PTS no es un reloj `elapsedRealtime` de las lentes (el caso habitual), el chip agrega la etiqueta `pipeline`.
 
-`VideoFrame.presentationTimeUs` es el PTS del frame. Si ese valor parece `elapsedRealtime` en microsegundos (edad entre 0 y 1 hora), el número es captura → pantalla. Si el PTS es tiempo relativo al stream (el caso habitual), el número es llegada → draw. Eso es latencia de pipeline, no un reloj de las lentes.
+`VideoFrame.presentationTimeUs` es el PTS del frame. Si ese valor parece `elapsedRealtime` en microsegundos (edad entre 0 y 10 s), el número es captura → pantalla. Si el PTS es tiempo relativo al stream, el número es llegada → draw. Eso es latencia de pipeline / decode, no un reloj de las lentes.
 
 No inventes un "glass clock" que el SDK no expone.
 
