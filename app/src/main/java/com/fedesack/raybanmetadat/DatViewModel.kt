@@ -21,6 +21,7 @@ import com.meta.wearable.dat.core.types.PermissionStatus
 import com.meta.wearable.dat.core.types.RegistrationState
 import com.meta.wearable.dat.mockdevice.MockDeviceKit
 import com.meta.wearable.dat.mockdevice.api.GlassesModel
+import com.meta.wearable.dat.mockdevice.api.MockDeviceKitInterface
 import com.meta.wearable.dat.mockdevice.api.camera.CameraFacing
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,7 +38,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     private var session: DeviceSession? = null
     private var camera: Camera? = null
     private var stream: Stream? = null
-    private var mockKit: MockDeviceKit? = null
+    private var mockKit: MockDeviceKitInterface? = null
     private var sessionJob: Job? = null
     private var sessionErrorJob: Job? = null
     private var streamJob: Job? = null
