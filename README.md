@@ -65,7 +65,7 @@ Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayb
 - `videoQuality` — `HIGH` (default) / `MEDIUM` / `LOW`. Se pasa a `StreamConfiguration.videoQuality`.
 - `frameRate` — `15` / `24` (default) / `30`. Se pasa a `StreamConfiguration.frameRate`.
 - `preferSharpness` — hint persistido (off). Meta: a menor resolución el preview puede verse más nítido si Bluetooth comprime. No cambia solo el stream; Federico elige quality/fps. Se loguea al Start.
-- `murdokuHqCapture` — default **off**. Modo Murdoku / HQ capture para un solver externo (bot). No es HUD de baja latencia. Ver abajo.
+- `murdokuHqCapture` — default **off**. Modo Murdoku / HQ capture + wizard in-app de 3 pasos. No es HUD de baja latencia. Ver abajo.
 - Si el stream está live, cambiar quality/fps hace stop+restart limpio. Si no hay sesión STARTED, el mensaje es **Stop and Start to apply**.
 - `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
 - `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
@@ -91,17 +91,31 @@ Spike de egress. El schema de enqueue está cerrado:
 
 `prefer` default `auto`. Si `voiceDevMode` está off la cola igual acepta, pero no hay POST. La respuesta Dev→Android (`intentId`, `status`, `kind`, …) se guarda si el webhook la devuelve; todavía no se consume.
 
-## Modo Murdoku (HQ capture)
+## Modo Murdoku (HQ capture + wizard)
 
-`murdokuHqCapture` (default off). Captura HQ para un solver externo. Federico usa las lentes para resolver Murdoku/Sudoku; el tablet no necesita preview de baja latencia, necesita el frame más limpio posible.
+`murdokuHqCapture` (default off). Captura HQ para un solver externo. Federico usa las lentes para resolver Murdoku; el tablet no necesita preview de baja latencia, necesita el frame más limpio posible.
 
 Cuando el flag está **on**:
 
 - `StreamConfiguration` efectivo: `VideoQuality.HIGH` (720×1280) y `frameRate = 15`, sin mutar los quality/fps guardados. Al apagar el flag, el live vuelve a HIGH/24 (o lo que haya elegido Federico).
 - Tradeoff Bluetooth Classic de Meta: la radio comprime por frame. Pedir menor fps (el piso de la escalera automática es 15) suele dar más bits por still y menos blur. HIGH se mantiene porque es el tope del API (`LOW` / `MEDIUM` / `HIGH`). `compressVideo` sigue en `true` para no romper el path HEVC → `Surface` del live.
 - Stills (v1): `Stream.capturePhoto()` → `PhotoData.HEIC` o `PhotoData.Bitmap`. Fallback: último `VideoFrame` YUV de `videoStream` (no se inventan APIs). JPEG 95 en MediaStore `Pictures/RaybanDat` o `files/captures` + FileProvider.
-- UI: entrada **Modo Murdoku** en Connect; en Live, chip `Murdoku HQ`, botón **Capturar tablero**, galería de las últimas 8 y share/export (`ACTION_SEND`).
+- UI: CTA de primer nivel **Modo Murdoku** en Connect (enciende el flag y entra al Live/wizard). En Live, chip `Modo Murdoku` y wizard de 3 pasos (copy fijo en español):
+  1. **Paso 1 — Instrucciones.** Prompt/voz stub: «Andá a la página de instrucciones del libro naranja y mirala con los lentes.» CTA **Listo, capturar**. OK: «Instrucciones guardadas.»
+  2. **Paso 2 — Puzzle.** «Ahora andá al Murdoku que querés resolver y encuadrá bien el grid.» CTA **Capturar puzzle**. OK: «Puzzle guardado. Analizando…»
+  3. **Paso 3 — Guía.** Pantalla **Próxima jugada** (placeholder hasta que el análisis devuelva `moves`). Share / path de galería / **Encolar análisis**.
 - El modo live con el flag **off** no cambia: preview + Start/Stop como antes.
+
+### Handoff (misma `sessionId`, orden fijo)
+
+1. `kind=instructions` (still HQ)
+2. `kind=puzzle` (still HQ)
+
+Meta: `timestamp`, `device=rayban-meta`, `quality=HIGH`.
+
+Respuesta stub (UI): `{sessionId, moves:[{row,col,value,reason}]}` con `row`/`col` 0-index.
+
+Path real de entrega (v1): stills en `BoardCaptureStore` (MediaStore `Pictures/RaybanDat`) + enqueue stub en `IntentQueue` (`source=dat`, `utterance` = JSON de assets). El schema de IntentQueue **no cambia**; el payload Murdoku viaja en `utterance`. Si `voiceDevMode` está on y hay webhook, se POST-ea ese JSON. Si el body de respuesta matchea el shape de análisis y el mismo `sessionId`, la Guía muestra las jugadas. Si no, queda el placeholder. Sin secrets.
 
 ## Cómo buildear el APK debug
 
@@ -124,7 +138,7 @@ El scheme de callback es `raybanmetadat`. Meta AI vuelve a la app por ese scheme
 
 ## Layout
 
-`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags, la galería Murdoku y el endpoint Gaze LAN. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica el preview. `GazeBridge` + `GazeWsServer` retransmiten JPEG por `ws://<wifi-ip>:8765/frames` si `gazeBridge` está on. `Latency`, `StreamSessionAnalytics` y `BoardCaptureMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
+`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags, la galería Murdoku, el wizard (`MurdokuWizardState`) y el endpoint Gaze LAN. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica el preview. `GazeBridge` + `GazeWsServer` retransmiten JPEG por `ws://<wifi-ip>:8765/frames` si `gazeBridge` está on. `Latency`, `StreamSessionAnalytics`, `BoardCaptureMath` y `MurdokuWizardMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
 
 ## Docs
 

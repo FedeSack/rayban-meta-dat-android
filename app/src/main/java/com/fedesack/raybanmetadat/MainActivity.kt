@@ -54,6 +54,7 @@ class MainActivity : ComponentActivity() {
                     onStop = viewModel::stopStream,
                     onCaptureBoard = viewModel::captureBoard,
                     onShareCapture = ::shareCapture,
+                    onEnqueueMurdoku = { viewModel.enqueueMurdokuAnalysis() },
                     onSurface = viewModel::attachPreview,
                     onSurfaceGone = viewModel::detachPreview,
                     onFlagChange = viewModel::setFlag,

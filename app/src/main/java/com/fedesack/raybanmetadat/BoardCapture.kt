@@ -14,6 +14,7 @@ data class BoardCapture(
     val height: Int?,
     val source: CaptureSource,
     val mime: String = MIME_JPEG,
+    val kind: MurdokuAssetKind? = null,
 ) {
     companion object {
         const val MIME_JPEG = "image/jpeg"
@@ -46,6 +47,7 @@ object BoardCaptureMath {
             item.height?.toString().orEmpty(),
             item.source.name,
             item.mime,
+            item.kind?.json.orEmpty(),
         ).joinToString("\t")
 
     fun parse(line: String): BoardCapture? {
@@ -62,6 +64,7 @@ object BoardCaptureMath {
             height = parts.getOrNull(5)?.toIntOrNull(),
             source = source,
             mime = parts.getOrNull(7)?.ifBlank { null } ?: BoardCapture.MIME_JPEG,
+            kind = MurdokuAssetKind.parse(parts.getOrNull(8)),
         )
     }
 

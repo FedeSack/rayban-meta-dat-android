@@ -178,7 +178,13 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun openLive() {
-        _state.update { it.copy(phase = Phase.LIVE, message = null) }
+        _state.update {
+            it.copy(
+                phase = Phase.LIVE,
+                message = null,
+                wizard = wizardForLive(it),
+            )
+        }
         ensureSession()
     }
 
@@ -200,6 +206,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 hasFrame = false,
                 awaitingFirstFrame = false,
                 analytics = AnalyticsSnapshot(),
+                wizard = null,
             )
         }
     }
@@ -230,6 +237,16 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             syncGazeBridge()
         }
         if (flag == FeatureFlag.MURDOKU_HQ_CAPTURE) {
+            _state.update { current ->
+                current.copy(
+                    wizard =
+                        if (enabled) {
+                            wizardForLive(current.copy(flags = next))
+                        } else {
+                            null
+                        },
+                )
+            }
             restartLiveStreamIfNeeded()
         }
     }
@@ -238,11 +255,17 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         if (!_state.value.flags.murdokuHqCapture) {
             setFlag(FeatureFlag.MURDOKU_HQ_CAPTURE, true)
         }
+        startMurdokuWizard()
         register(activity)
+    }
+
+    fun startMurdokuWizard() {
+        _state.update { it.copy(wizard = it.wizard ?: MurdokuWizardMath.newSession()) }
     }
 
     fun captureBoard() {
         if (_state.value.capturing) return
+        if (_state.value.wizard?.step == MurdokuWizardStep.GUIDE) return
         val active = stream
         if (active == null || _state.value.stream != StreamState.STREAMING) {
             _state.update { it.copy(message = "Start el stream para capturar") }
@@ -268,18 +291,39 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             }
             val capture = saved
             if (capture != null) {
-                val next = BoardCaptureMath.prepend(_state.value.captures, capture)
+                val wizard = _state.value.wizard
+                val tagged =
+                    wizard?.captureKind?.let { kind -> capture.copy(kind = kind) } ?: capture
+                val next = BoardCaptureMath.prepend(_state.value.captures, tagged)
                 captureStore.save(next)
-                _state.update { it.copy(captures = next, capturing = false, message = null) }
+                val advanced =
+                    if (wizard != null && wizard.captureKind != null) {
+                        MurdokuWizardMath.acceptCapture(wizard, tagged, takenAtMs)
+                    } else {
+                        wizard
+                    }
+                _state.update {
+                    it.copy(
+                        captures = next,
+                        capturing = false,
+                        message = null,
+                        wizard = advanced,
+                    )
+                }
                 logAnalytics(
                     "murdoku_capture",
                     mapOf(
-                        "source" to capture.source.name,
-                        "mime" to capture.mime,
-                        "w" to capture.width,
-                        "h" to capture.height,
+                        "source" to tagged.source.name,
+                        "mime" to tagged.mime,
+                        "kind" to tagged.kind?.json,
+                        "session" to advanced?.sessionId,
+                        "w" to tagged.width,
+                        "h" to tagged.height,
                     ),
                 )
+                if (advanced != null && advanced.readyToHandoff && advanced.step == MurdokuWizardStep.GUIDE) {
+                    enqueueMurdokuAnalysis(advanced)
+                }
             } else {
                 _state.update {
                     it.copy(
@@ -310,6 +354,53 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     fun setIntentWebhookUrl(url: String) {
         val stored = flagsStore.setIntentWebhookUrl(url)
         _state.update { it.copy(intentWebhookUrl = stored) }
+    }
+
+    fun enqueueMurdokuAnalysis(wizard: MurdokuWizardState? = _state.value.wizard) {
+        val session = wizard ?: return
+        if (!session.readyToHandoff) return
+        val intent =
+            VoiceIntent.create(
+                utterance = MurdokuHandoffJson.payload(session),
+                source = IntentSource.DAT,
+                deviceId = deviceId(),
+                appVersion = appVersion(),
+                voiceDevMode = _state.value.flags.voiceDevMode,
+            )
+        viewModelScope.launch(Dispatchers.IO) {
+            val result = intentEgress.submit(intent)
+            val parsed =
+                result.responseBody
+                    ?.let { MurdokuHandoffJson.parseAnalysis(it) }
+                    ?.takeIf { it.sessionId == session.sessionId }
+            _state.update { current ->
+                val currentWizard = current.wizard
+                val nextWizard =
+                    when {
+                        currentWizard == null || currentWizard.sessionId != session.sessionId -> currentWizard
+                        parsed != null ->
+                            MurdokuWizardMath.applyAnalysis(currentWizard, parsed)
+                                .copy(enqueueStatus = result.statusLine)
+                        else -> currentWizard.copy(enqueueStatus = result.statusLine)
+                    }
+                current.copy(
+                    queuedIntentCount = intentQueue.size,
+                    lastIntentStatus = result.statusLine,
+                    wizard = nextWizard,
+                )
+            }
+            logAnalytics(
+                "murdoku_handoff",
+                mapOf(
+                    "session" to session.sessionId,
+                    "intent" to intent.id,
+                    "posted" to result.posted,
+                    "reason" to result.reason,
+                    "queued" to intentQueue.size,
+                    "moves" to (parsed?.moves?.size ?: 0),
+                ),
+            )
+        }
     }
 
     fun enqueueChatStub(utterance: String) {
@@ -529,11 +620,16 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun configuredVideoQuality(): VideoQuality =
-        when (_state.value.flags.videoQuality) {
+        when (_state.value.flags.streamConfig().quality) {
             VideoQualityFlag.HIGH -> VideoQuality.HIGH
             VideoQualityFlag.MEDIUM -> VideoQuality.MEDIUM
             VideoQualityFlag.LOW -> VideoQuality.LOW
         }
+
+    private fun wizardForLive(state: AppState): MurdokuWizardState? {
+        if (!state.flags.murdokuHqCapture) return null
+        return state.wizard ?: MurdokuWizardMath.newSession()
+    }
 
     private fun startStream() {
         val current = session ?: return

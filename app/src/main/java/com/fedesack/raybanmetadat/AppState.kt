@@ -30,6 +30,7 @@ data class AppState(
     val flags: FeatureFlags = FeatureFlags(),
     val captures: List<BoardCapture> = emptyList(),
     val capturing: Boolean = false,
+    val wizard: MurdokuWizardState? = null,
     val intentWebhookUrl: String = "",
     val queuedIntentCount: Int = 0,
     val lastIntentStatus: String? = null,

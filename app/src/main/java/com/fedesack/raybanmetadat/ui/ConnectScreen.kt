@@ -121,21 +121,11 @@ fun ConnectScreen(
                     onClick = onRegister,
                     modifier = Modifier.fillMaxWidth(),
                 )
-                DatButton(
-                    label = "Modo Murdoku",
-                    primary = false,
+                MurdokuEntryCard(
                     enabled = state.androidReady,
+                    flagOn = state.flags.murdokuHqCapture,
                     onClick = onMurdoku,
-                    modifier = Modifier.fillMaxWidth(),
                 )
-                if (state.flags.murdokuHqCapture) {
-                    Text(
-                        text = "HQ capture · HIGH 15 fps · solver, no live HUD",
-                        style = MaterialTheme.typography.labelMedium.copy(color = DatTokens.muted),
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth(),
-                    )
-                }
                 DatButton(
                     label = "Use Mock Device",
                     primary = false,
