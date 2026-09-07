@@ -13,7 +13,7 @@ Dos pantallas, oscuras y con poco chrome.
 1. **Conectar / registrar.** Registro con Meta AI, o Mock Device Kit sin hardware.
 2. **Preview.** Surface de frames a pantalla completa. El chrome (HUD, Features, Start/Stop) respeta `WindowInsets` (`statusBars` + `navigationBars` + cutout). Entre Start y el primer frame hay overlay **Encendiendo cámara…**. HUD compacto `N ms` (caption `pipeline` cuando aplica). El panel de analíticas y el de Features se encienden a mano.
 
-El dominio es el del SDK. `DeviceSessionState` es la sesión. `StreamState` es el stream. La app no remapea esas máquinas de estados. Configuración pedida: `VideoQuality.HIGH` (720×1280) a 24 fps, `compressVideo = true`. El API acepta 2, 7, 15, 24 o 30.
+El dominio es el del SDK. `DeviceSessionState` es la sesión. `StreamState` es el stream. La app no remapea esas máquinas de estados. El stream lee `videoQuality` / `frameRate` de los feature flags (default `VideoQuality.HIGH` 720×1280 a 24 fps, `compressVideo = true`). El panel Features permite A/B HIGH|MEDIUM|LOW y 15|24|30 sin rebuild. El API acepta 2, 7, 15, 24 o 30; la UI solo expone 15/24/30.
 
 El preview HEVC va a un `Surface` via `MediaCodec`. Compose no copia cada frame. El fallback YUV (frames sin comprimir) dibuja sobre el mismo Surface.
 
@@ -54,16 +54,20 @@ Campos expuestos (HUD expandible si `analyticsOverlay` está on, y `adb logcat -
 | `decodePath` (`HEVC` / `YUV`) | `VideoFrame.isCompressed` |
 | `queueDrops` | Cola HEVC llena en `FrameSink` |
 | `decodeErrors` | `MediaCodec.Callback.onError` |
-| `configuredQuality` / `configuredFps` / `compressVideo` | Lo que se pasa a `StreamConfiguration` (HIGH / 24 / true) |
+| `configuredQuality` / `configuredFps` / `compressVideo` | Lo que se pasa a `StreamConfiguration` (flags actuales) |
 
 Al Stop se loguea un summary (ring buffer de 128 eventos). `verboseLogcat` agrega snapshots periódicos.
 
 ## Feature flags
 
-Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayban_dat_flags`). Defaults todos **off**.
+Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayban_dat_flags`).
 
-- `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir).
-- `verboseLogcat` — líneas extra `RaybanDat/Analytics`.
+- `videoQuality` — `HIGH` (default) / `MEDIUM` / `LOW`. Se pasa a `StreamConfiguration.videoQuality`.
+- `frameRate` — `15` / `24` (default) / `30`. Se pasa a `StreamConfiguration.frameRate`.
+- `preferSharpness` — hint persistido (off). Meta: a menor resolución el preview puede verse más nítido si Bluetooth comprime. No cambia solo el stream; Federico elige quality/fps. Se loguea al Start.
+- Si el stream está live, cambiar quality/fps hace stop+restart limpio. Si no hay sesión STARTED, el mensaje es **Stop and Start to apply**.
+- `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
+- `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
 - `gazeBridge` / `voiceAssist` — stubs, no-op hasta cablearlos. No hay producto gaze/Windows en esta app.
 
 ## Cómo buildear el APK debug

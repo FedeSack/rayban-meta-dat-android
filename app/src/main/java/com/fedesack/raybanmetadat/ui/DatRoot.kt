@@ -4,7 +4,9 @@ import android.view.Surface
 import androidx.compose.runtime.Composable
 import com.fedesack.raybanmetadat.AppState
 import com.fedesack.raybanmetadat.FeatureFlag
+import com.fedesack.raybanmetadat.FrameRateFlag
 import com.fedesack.raybanmetadat.Phase
+import com.fedesack.raybanmetadat.VideoQualityFlag
 
 @Composable
 fun DatRoot(
@@ -17,6 +19,8 @@ fun DatRoot(
     onSurface: (Surface) -> Unit,
     onSurfaceGone: () -> Unit,
     onFlagChange: (FeatureFlag, Boolean) -> Unit,
+    onVideoQualityChange: (VideoQualityFlag) -> Unit,
+    onFrameRateChange: (FrameRateFlag) -> Unit,
 ) {
     when (state.phase) {
         Phase.CONNECT ->
@@ -25,6 +29,8 @@ fun DatRoot(
                 onRegister = onRegister,
                 onMock = onMock,
                 onFlagChange = onFlagChange,
+                onVideoQualityChange = onVideoQualityChange,
+                onFrameRateChange = onFrameRateChange,
             )
         Phase.LIVE ->
             LiveScreen(
@@ -35,6 +41,8 @@ fun DatRoot(
                 onSurface = onSurface,
                 onSurfaceGone = onSurfaceGone,
                 onFlagChange = onFlagChange,
+                onVideoQualityChange = onVideoQualityChange,
+                onFrameRateChange = onFrameRateChange,
             )
     }
 }

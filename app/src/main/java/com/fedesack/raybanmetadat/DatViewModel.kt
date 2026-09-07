@@ -194,6 +194,22 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         )
     }
 
+    fun setVideoQuality(quality: VideoQualityFlag) {
+        if (quality == _state.value.flags.videoQuality) return
+        val next = flagsStore.setVideoQuality(quality)
+        _state.update { it.copy(flags = next) }
+        logAnalytics("flag", mapOf("name" to FeatureFlagsCatalog.VIDEO_QUALITY_KEY, "value" to quality.key))
+        restartLiveStreamIfNeeded()
+    }
+
+    fun setFrameRate(frameRate: FrameRateFlag) {
+        if (frameRate == _state.value.flags.frameRate) return
+        val next = flagsStore.setFrameRate(frameRate)
+        _state.update { it.copy(flags = next) }
+        logAnalytics("flag", mapOf("name" to FeatureFlagsCatalog.FRAME_RATE_KEY, "value" to frameRate.fps))
+        restartLiveStreamIfNeeded()
+    }
+
     fun onWearableCameraPermission(status: PermissionStatus) {
         if (status == PermissionStatus.Granted || _state.value.source == DeviceSource.MOCK) {
             startStream()
@@ -252,11 +268,12 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
 
     private fun beginAwaitingFirstFrame() {
         val now = SystemClock.elapsedRealtime()
+        val config = _state.value.flags.streamConfig()
         analytics.start(
             atElapsedMs = now,
-            configuredQuality = CONFIGURED_QUALITY,
-            configuredFps = CONFIGURED_FPS,
-            compressVideo = CONFIGURED_COMPRESS,
+            configuredQuality = config.qualityName,
+            configuredFps = config.fps,
+            compressVideo = config.compressVideo,
         )
         analytics.onSessionState(_state.value.session.name, now)
         analytics.onStreamState(_state.value.stream.name, now)
@@ -275,9 +292,10 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             mapOf(
                 "session" to _state.value.session.name,
                 "stream" to _state.value.stream.name,
-                "cfgQuality" to CONFIGURED_QUALITY,
-                "cfgFps" to CONFIGURED_FPS,
-                "compress" to CONFIGURED_COMPRESS,
+                "cfgQuality" to config.qualityName,
+                "cfgFps" to config.fps,
+                "compress" to config.compressVideo,
+                "preferSharpness" to config.preferSharpness,
             ),
         )
     }
@@ -346,15 +364,53 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
             }
     }
 
+    private fun restartLiveStreamIfNeeded() {
+        if (!isLiveStreamActive()) return
+        releaseStream(reason = "reconfigure")
+        if (_state.value.session != DeviceSessionState.STARTED) {
+            _state.update {
+                it.copy(
+                    stream = StreamState.STOPPED,
+                    message = "Stop and Start to apply",
+                    awaitingFirstFrame = false,
+                    hasFrame = false,
+                    latencyMs = null,
+                    latencyMode = null,
+                    analytics = analytics.snapshot(),
+                )
+            }
+            return
+        }
+        beginAwaitingFirstFrame()
+        startStream()
+    }
+
+    private fun isLiveStreamActive(): Boolean {
+        val streamState = _state.value.stream
+        return camera != null ||
+            stream != null ||
+            streamState == StreamState.STREAMING ||
+            streamState == StreamState.STARTING ||
+            streamState == StreamState.STOPPING
+    }
+
+    private fun configuredVideoQuality(): VideoQuality =
+        when (_state.value.flags.videoQuality) {
+            VideoQualityFlag.HIGH -> VideoQuality.HIGH
+            VideoQualityFlag.MEDIUM -> VideoQuality.MEDIUM
+            VideoQualityFlag.LOW -> VideoQuality.LOW
+        }
+
     private fun startStream() {
         val current = session ?: return
         if (stream != null) return
+        val config = _state.value.flags.streamConfig()
         current
             .addCamera(
                 StreamConfiguration(
-                    videoQuality = VideoQuality.HIGH,
-                    frameRate = CONFIGURED_FPS,
-                    compressVideo = CONFIGURED_COMPRESS,
+                    videoQuality = configuredVideoQuality(),
+                    frameRate = config.fps,
+                    compressVideo = config.compressVideo,
                 ),
             )
             .onSuccess { added ->
@@ -451,19 +507,7 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     private fun clearStream() {
-        framesJob?.cancel()
-        streamJob?.cancel()
-        streamErrorJob?.cancel()
-        framesJob = null
-        streamJob = null
-        streamErrorJob = null
-        camera?.close()
-        camera = null
-        stream = null
-        val summary = analytics.stop(SystemClock.elapsedRealtime())
-        if (summary != null) {
-            logAnalytics("stop", summary.toFields())
-        }
+        releaseStream(reason = "stop")
         _state.update {
             it.copy(
                 stream = StreamState.STOPPED,
@@ -473,6 +517,23 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                 awaitingFirstFrame = false,
                 analytics = analytics.snapshot(),
             )
+        }
+    }
+
+    private fun releaseStream(reason: String) {
+        framesJob?.cancel()
+        streamJob?.cancel()
+        streamErrorJob?.cancel()
+        framesJob = null
+        streamJob = null
+        streamErrorJob = null
+        runCatching { camera?.stop() }
+        camera?.close()
+        camera = null
+        stream = null
+        val summary = analytics.stop(SystemClock.elapsedRealtime())
+        if (summary != null) {
+            logAnalytics("stop", summary.toFields() + mapOf("reason" to reason))
         }
     }
 
@@ -519,11 +580,5 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
         sink.detach()
         mockKit?.disable()
         super.onCleared()
-    }
-
-    companion object {
-        private const val CONFIGURED_QUALITY = "HIGH"
-        private const val CONFIGURED_FPS = 24
-        private const val CONFIGURED_COMPRESS = true
     }
 }

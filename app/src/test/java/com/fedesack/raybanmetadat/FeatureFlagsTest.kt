@@ -7,12 +7,15 @@ import org.junit.Test
 
 class FeatureFlagsTest {
     @Test
-    fun defaultsKeepTheLiveSurfaceClean() {
+    fun defaultsKeepTheLiveSurfaceCleanAndStreamOnHigh24() {
         val flags = FeatureFlags()
         assertFalse(flags.analyticsOverlay)
         assertFalse(flags.verboseLogcat)
+        assertFalse(flags.preferSharpness)
         assertFalse(flags.gazeBridge)
         assertFalse(flags.voiceAssist)
+        assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
+        assertEquals(FrameRateFlag.FPS_24, flags.frameRate)
         FeatureFlag.entries.forEach { flag ->
             assertFalse(flag.default)
             assertEquals(flag.default, flags.enabled(flag))
@@ -20,6 +23,12 @@ class FeatureFlagsTest {
         assertTrue(FeatureFlag.GAZE_BRIDGE.stub)
         assertTrue(FeatureFlag.VOICE_ASSIST.stub)
         assertFalse(FeatureFlag.ANALYTICS_OVERLAY.stub)
+        assertFalse(FeatureFlag.PREFER_SHARPNESS.stub)
+        val config = flags.streamConfig()
+        assertEquals("HIGH", config.qualityName)
+        assertEquals(24, config.fps)
+        assertTrue(config.compressVideo)
+        assertFalse(config.preferSharpness)
     }
 
     @Test
@@ -32,8 +41,28 @@ class FeatureFlagsTest {
             )
         assertTrue(next.analyticsOverlay)
         assertFalse(next.verboseLogcat)
+        assertFalse(next.preferSharpness)
         assertFalse(next.gazeBridge)
         assertFalse(next.voiceAssist)
+        assertEquals(VideoQualityFlag.HIGH, next.videoQuality)
+        assertEquals(FrameRateFlag.FPS_24, next.frameRate)
+    }
+
+    @Test
+    fun applyQualityAndFrameRateLeaveBooleanFlagsAlone() {
+        val current =
+            FeatureFlagsCatalog.apply(
+                FeatureFlags(),
+                FeatureFlag.VERBOSE_LOGCAT,
+                enabled = true,
+            )
+        val quality = FeatureFlagsCatalog.applyQuality(current, VideoQualityFlag.LOW)
+        val fps = FeatureFlagsCatalog.applyFrameRate(quality, FrameRateFlag.FPS_15)
+        assertTrue(fps.verboseLogcat)
+        assertEquals(VideoQualityFlag.LOW, fps.videoQuality)
+        assertEquals(FrameRateFlag.FPS_15, fps.frameRate)
+        assertEquals("LOW", fps.streamConfig().qualityName)
+        assertEquals(15, fps.streamConfig().fps)
     }
 
     @Test
@@ -45,16 +74,89 @@ class FeatureFlagsTest {
             }
         assertTrue(flags.analyticsOverlay)
         assertFalse(flags.verboseLogcat)
+        assertFalse(flags.preferSharpness)
         assertTrue(flags.gazeBridge)
         assertFalse(flags.voiceAssist)
+        assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
+        assertEquals(FrameRateFlag.FPS_24, flags.frameRate)
         assertEquals(
             mapOf(
                 "analyticsOverlay" to true,
                 "verboseLogcat" to false,
+                "preferSharpness" to false,
                 "gazeBridge" to true,
                 "voiceAssist" to false,
             ),
             FeatureFlagsCatalog.toMap(flags),
         )
+        assertEquals(
+            mapOf(
+                "videoQuality" to "HIGH",
+                "frameRate" to 24,
+                "preferSharpness" to false,
+            ),
+            FeatureFlagsCatalog.streamSettings(flags),
+        )
+    }
+
+    @Test
+    fun fromStoredReadsQualityFpsAndSharpnessHint() {
+        val flags =
+            FeatureFlagsCatalog.fromStoredValues(
+                mapOf(
+                    "videoQuality" to "medium",
+                    "frameRate" to 30,
+                    "preferSharpness" to true,
+                    "verboseLogcat" to true,
+                ),
+            )
+        assertEquals(VideoQualityFlag.MEDIUM, flags.videoQuality)
+        assertEquals(FrameRateFlag.FPS_30, flags.frameRate)
+        assertTrue(flags.preferSharpness)
+        assertTrue(flags.verboseLogcat)
+        assertEquals("MEDIUM", flags.streamConfig().qualityName)
+        assertEquals(30, flags.streamConfig().fps)
+        assertTrue(flags.streamConfig().preferSharpness)
+    }
+
+    @Test
+    fun videoQualityParsesKnownValuesAndFallsBackToHigh() {
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse(null))
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse(""))
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse("  "))
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse("high"))
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse("HIGH"))
+        assertEquals(VideoQualityFlag.MEDIUM, VideoQualityFlag.parse("Medium"))
+        assertEquals(VideoQualityFlag.LOW, VideoQualityFlag.parse("low"))
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse("ultra"))
+        assertEquals(VideoQualityFlag.HIGH, VideoQualityFlag.parse("720p"))
+    }
+
+    @Test
+    fun frameRateParsesKnownValuesAndFallsBackTo24() {
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(null as Int?))
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(null as String?))
+        assertEquals(FrameRateFlag.FPS_15, FrameRateFlag.parse(15))
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(24))
+        assertEquals(FrameRateFlag.FPS_30, FrameRateFlag.parse(30))
+        assertEquals(FrameRateFlag.FPS_30, FrameRateFlag.parse(" 30 "))
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(2))
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(7))
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(60))
+        assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse("abc"))
+        assertEquals(FrameRateFlag.FPS_15, FrameRateFlag.parse("15"))
+    }
+
+    @Test
+    fun fromStoredIgnoresUnknownQualityAndFps() {
+        val flags =
+            FeatureFlagsCatalog.fromStoredValues(
+                mapOf(
+                    "videoQuality" to "ULTRA",
+                    "frameRate" to "60",
+                ),
+            )
+        assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
+        assertEquals(FrameRateFlag.FPS_24, flags.frameRate)
     }
 }
