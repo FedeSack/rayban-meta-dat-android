@@ -135,7 +135,30 @@ fun FeatureFlagsPanel(
             checked = flags.voiceAssist,
             onCheckedChange = { onFlagChange(FeatureFlag.VOICE_ASSIST, it) },
         )
+        FlagRow(
+            title = "Dev mode (voz→fixes)",
+            subtitle = "Stub — later routes voice to our coding agent. Not Meta Hey-wake.",
+            checked = flags.voiceDevMode,
+            onCheckedChange = { onFlagChange(FeatureFlag.VOICE_DEV_MODE, it) },
+        )
     }
+}
+
+@Composable
+fun DevModeChip(modifier: Modifier = Modifier) {
+    Text(
+        text = "Dev mode",
+        style =
+            MaterialTheme.typography.labelMedium.copy(
+                color = DatTokens.white,
+                fontSize = 11.sp,
+                lineHeight = 14.sp,
+            ),
+        modifier =
+            modifier
+                .background(DatTokens.surface, RoundedCornerShape(DatTokens.chipRadius))
+                .padding(horizontal = 10.dp, vertical = 4.dp),
+    )
 }
 
 @Composable

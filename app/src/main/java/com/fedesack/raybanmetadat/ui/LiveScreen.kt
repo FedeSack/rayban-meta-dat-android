@@ -96,20 +96,27 @@ fun LiveScreen(
                 textAlign = TextAlign.Center,
             )
         }
-        LatencyHud(
-            state = state,
-            expanded = analyticsExpanded && state.flags.analyticsOverlay,
-            onToggle = {
-                if (state.flags.analyticsOverlay) {
-                    analyticsExpanded = !analyticsExpanded
-                }
-            },
+        Column(
             modifier =
                 Modifier
                     .align(Alignment.TopStart)
                     .statusBarsPadding()
                     .padding(start = DatTokens.pagePad, top = DatTokens.hudGap),
-        )
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            LatencyHud(
+                state = state,
+                expanded = analyticsExpanded && state.flags.analyticsOverlay,
+                onToggle = {
+                    if (state.flags.analyticsOverlay) {
+                        analyticsExpanded = !analyticsExpanded
+                    }
+                },
+            )
+            if (state.flags.voiceDevMode) {
+                DevModeChip()
+            }
+        }
         FeaturesToggle(
             open = showFlags,
             onClick = { showFlags = !showFlags },

@@ -14,6 +14,7 @@ class FeatureFlagsTest {
         assertFalse(flags.preferSharpness)
         assertFalse(flags.gazeBridge)
         assertFalse(flags.voiceAssist)
+        assertFalse(flags.voiceDevMode)
         assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
         assertEquals(FrameRateFlag.FPS_24, flags.frameRate)
         FeatureFlag.entries.forEach { flag ->
@@ -22,6 +23,7 @@ class FeatureFlagsTest {
         }
         assertTrue(FeatureFlag.GAZE_BRIDGE.stub)
         assertTrue(FeatureFlag.VOICE_ASSIST.stub)
+        assertTrue(FeatureFlag.VOICE_DEV_MODE.stub)
         assertFalse(FeatureFlag.ANALYTICS_OVERLAY.stub)
         assertFalse(FeatureFlag.PREFER_SHARPNESS.stub)
         val config = flags.streamConfig()
@@ -44,6 +46,7 @@ class FeatureFlagsTest {
         assertFalse(next.preferSharpness)
         assertFalse(next.gazeBridge)
         assertFalse(next.voiceAssist)
+        assertFalse(next.voiceDevMode)
         assertEquals(VideoQualityFlag.HIGH, next.videoQuality)
         assertEquals(FrameRateFlag.FPS_24, next.frameRate)
     }
@@ -77,6 +80,7 @@ class FeatureFlagsTest {
         assertFalse(flags.preferSharpness)
         assertTrue(flags.gazeBridge)
         assertFalse(flags.voiceAssist)
+        assertFalse(flags.voiceDevMode)
         assertEquals(VideoQualityFlag.HIGH, flags.videoQuality)
         assertEquals(FrameRateFlag.FPS_24, flags.frameRate)
         assertEquals(
@@ -86,6 +90,7 @@ class FeatureFlagsTest {
                 "preferSharpness" to false,
                 "gazeBridge" to true,
                 "voiceAssist" to false,
+                "voiceDevMode" to false,
             ),
             FeatureFlagsCatalog.toMap(flags),
         )
@@ -145,6 +150,26 @@ class FeatureFlagsTest {
         assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse(60))
         assertEquals(FrameRateFlag.FPS_24, FrameRateFlag.parse("abc"))
         assertEquals(FrameRateFlag.FPS_15, FrameRateFlag.parse("15"))
+    }
+
+    @Test
+    fun voiceDevModePersistsOffByDefaultAndCanBeEnabled() {
+        val enabled =
+            FeatureFlagsCatalog.apply(
+                FeatureFlags(),
+                FeatureFlag.VOICE_DEV_MODE,
+                enabled = true,
+            )
+        assertTrue(enabled.voiceDevMode)
+        assertTrue(enabled.enabled(FeatureFlag.VOICE_DEV_MODE))
+        assertFalse(enabled.voiceAssist)
+        val restored =
+            FeatureFlagsCatalog.fromStoredValues(
+                mapOf("voiceDevMode" to true, "voiceAssist" to false),
+            )
+        assertTrue(restored.voiceDevMode)
+        assertFalse(restored.voiceAssist)
+        assertEquals(true, FeatureFlagsCatalog.toMap(restored)["voiceDevMode"])
     }
 
     @Test
