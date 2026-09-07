@@ -10,7 +10,6 @@ fun DatRoot(
     state: AppState,
     onRegister: () -> Unit,
     onMock: () -> Unit,
-    onOpenLive: () -> Unit,
     onBack: () -> Unit,
     onStart: () -> Unit,
     onStop: () -> Unit,
@@ -23,7 +22,6 @@ fun DatRoot(
                 state = state,
                 onRegister = onRegister,
                 onMock = onMock,
-                onOpenLive = onOpenLive,
             )
         Phase.LIVE ->
             LiveScreen(

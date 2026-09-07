@@ -41,7 +41,6 @@ class MainActivity : ComponentActivity() {
                     state = state,
                     onRegister = { viewModel.register(this) },
                     onMock = viewModel::useMock,
-                    onOpenLive = viewModel::openLive,
                     onBack = viewModel::backToConnect,
                     onStart = { viewModel.onStartClicked { wearableCamera.launch(Permission.CAMERA) } },
                     onStop = viewModel::stopStream,

@@ -1,8 +1,8 @@
 package com.fedesack.raybanmetadat.ui
 
+import android.graphics.SurfaceTexture
 import android.view.Surface
-import android.view.SurfaceHolder
-import android.view.SurfaceView
+import android.view.TextureView
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
@@ -16,27 +16,33 @@ fun PreviewSurface(
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            SurfaceView(context).apply {
-                holder.addCallback(
-                    object : SurfaceHolder.Callback {
-                        override fun surfaceCreated(holder: SurfaceHolder) {
-                            onSurface(holder.surface)
-                        }
-
-                        override fun surfaceChanged(
-                            holder: SurfaceHolder,
-                            format: Int,
+            TextureView(context).apply {
+                isOpaque = false
+                surfaceTextureListener =
+                    object : TextureView.SurfaceTextureListener {
+                        override fun onSurfaceTextureAvailable(
+                            surface: SurfaceTexture,
                             width: Int,
                             height: Int,
                         ) {
-                            onSurface(holder.surface)
+                            onSurface(Surface(surface))
                         }
 
-                        override fun surfaceDestroyed(holder: SurfaceHolder) {
-                            onSurfaceGone()
+                        override fun onSurfaceTextureSizeChanged(
+                            surface: SurfaceTexture,
+                            width: Int,
+                            height: Int,
+                        ) {
+                            onSurface(Surface(surface))
                         }
-                    },
-                )
+
+                        override fun onSurfaceTextureDestroyed(surface: SurfaceTexture): Boolean {
+                            onSurfaceGone()
+                            return true
+                        }
+
+                        override fun onSurfaceTextureUpdated(surface: SurfaceTexture) {}
+                    }
             }
         },
     )
