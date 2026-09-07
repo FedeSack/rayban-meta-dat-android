@@ -35,11 +35,17 @@ class BoardCaptureTest {
                 height = 1280,
                 source = CaptureSource.PHOTO,
                 mime = BoardCapture.MIME_JPEG,
+                kind = MurdokuAssetKind.PUZZLE,
             )
         val parsed = BoardCaptureMath.parse(BoardCaptureMath.serialize(item))
         assertEquals(item, parsed)
         val batch = BoardCaptureMath.parseAll(BoardCaptureMath.serializeAll(listOf(item)))
         assertEquals(listOf(item), batch)
+        val legacy = "id-1\tcontent://media/external/images/1\tmurdoku_10.jpg\t10\t720\t1280\tPHOTO\timage/jpeg"
+        assertEquals(
+            item.copy(kind = null),
+            BoardCaptureMath.parse(legacy),
+        )
     }
 
     @Test

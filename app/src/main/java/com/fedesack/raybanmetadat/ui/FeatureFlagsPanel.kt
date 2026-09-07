@@ -127,9 +127,9 @@ fun FeatureFlagsPanel(
             title = "Murdoku HQ capture",
             subtitle =
                 if (flags.murdokuHqCapture) {
-                    "Forces HIGH / 15 fps. Stills for an external solver, not live HUD latency."
+                    "Forces HIGH / 15 fps. Wizard in-app: instrucciones → puzzle → próxima jugada."
                 } else {
-                    "HQ stills for an external solver. Off keeps the live preview path."
+                    "HQ stills + wizard Murdoku. Off keeps the live preview path."
                 },
             checked = flags.murdokuHqCapture,
             onCheckedChange = { onFlagChange(FeatureFlag.MURDOKU_HQ_CAPTURE, it) },
