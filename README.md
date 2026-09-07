@@ -100,20 +100,22 @@ Cuando el flag está **on**:
 - `StreamConfiguration` efectivo: `VideoQuality.HIGH` (720×1280) y `frameRate = 15`, sin mutar los quality/fps guardados. Al apagar el flag, el live vuelve a HIGH/24 (o lo que haya elegido Federico).
 - Tradeoff Bluetooth Classic de Meta: la radio comprime por frame. Pedir menor fps (el piso de la escalera automática es 15) suele dar más bits por still y menos blur. HIGH se mantiene porque es el tope del API (`LOW` / `MEDIUM` / `HIGH`). `compressVideo` sigue en `true` para no romper el path HEVC → `Surface` del live.
 - Stills (v1): `Stream.capturePhoto()` → `PhotoData.HEIC` o `PhotoData.Bitmap`. Fallback: último `VideoFrame` YUV de `videoStream` (no se inventan APIs). JPEG 95 en MediaStore `Pictures/RaybanDat` o `files/captures` + FileProvider.
-- UI: CTA de primer nivel **Modo Murdoku** en Connect (enciende el flag y entra al Live/wizard). En Live, chip `Modo Murdoku` y wizard de 3 pasos (copy fijo en español):
-  1. **Paso 1 — Instrucciones.** Prompt/voz stub: «Andá a la página de instrucciones del libro naranja y mirala con los lentes.» CTA **Listo, capturar**. OK: «Instrucciones guardadas.»
-  2. **Paso 2 — Puzzle.** «Ahora andá al Murdoku que querés resolver y encuadrá bien el grid.» CTA **Capturar puzzle**. OK: «Puzzle guardado. Analizando…»
-  3. **Paso 3 — Guía.** Pantalla **Próxima jugada** (placeholder hasta que el análisis devuelva `moves`). Share / path de galería / **Encolar análisis**.
+- UI: CTA de primer nivel **Modo Murdoku** en Connect (enciende el flag y entra al Live/wizard). En Live, chip de modo **Murdoku** y wizard de 3 pasos (títulos fijos):
+  1. **Instrucciones.** Prompt/voz stub: «Andá a la página de instrucciones del libro naranja y mirala con los lentes.» CTA **Listo, capturar**. OK: «Instrucciones guardadas.»
+  2. **El Murdoku.** «Ahora andá al Murdoku que querés resolver y encuadrá bien el grid.» CTA **Capturar puzzle**. OK: «Puzzle guardado. Analizando…»
+  3. **Próxima jugada** (placeholder hasta que el análisis devuelva `moves`). Share / path de galería / **Encolar análisis**.
 - El modo live con el flag **off** no cambia: preview + Start/Stop como antes.
 
-### Handoff (misma `sessionId`, orden fijo)
+### Handoff HARD (misma `sessionId`, orden fijo)
+
+Nunca se envía `puzzle` sin `instructions` primero. `handoff` / `payload` son vacíos o `null` si falta el still de instrucciones. Orden de `assets` siempre:
 
 1. `kind=instructions` (still HQ)
 2. `kind=puzzle` (still HQ)
 
 Meta: `timestamp`, `device=rayban-meta`, `quality=HIGH`.
 
-Respuesta stub (UI): `{sessionId, moves:[{row,col,value,reason}]}` con `row`/`col` 0-index.
+Respuesta stub (UI): `{sessionId, moves:[{row,col,value,reason}]}` con `row`/`col` **0-index**.
 
 Path real de entrega (v1): stills en `BoardCaptureStore` (MediaStore `Pictures/RaybanDat`) + enqueue stub en `IntentQueue` (`source=dat`, `utterance` = JSON de assets). El schema de IntentQueue **no cambia**; el payload Murdoku viaja en `utterance`. Si `voiceDevMode` está on y hay webhook, se POST-ea ese JSON. Si el body de respuesta matchea el shape de análisis y el mismo `sessionId`, la Guía muestra las jugadas. Si no, queda el placeholder. Sin secrets.
 

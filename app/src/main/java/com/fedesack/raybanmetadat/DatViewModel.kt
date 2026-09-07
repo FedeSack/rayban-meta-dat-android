@@ -358,10 +358,10 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun enqueueMurdokuAnalysis(wizard: MurdokuWizardState? = _state.value.wizard) {
         val session = wizard ?: return
-        if (!session.readyToHandoff) return
+        val utterance = MurdokuHandoffJson.payload(session) ?: return
         val intent =
             VoiceIntent.create(
-                utterance = MurdokuHandoffJson.payload(session),
+                utterance = utterance,
                 source = IntentSource.DAT,
                 deviceId = deviceId(),
                 appVersion = appVersion(),

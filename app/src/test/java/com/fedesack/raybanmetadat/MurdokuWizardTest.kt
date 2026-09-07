@@ -10,21 +10,21 @@ class MurdokuWizardTest {
     @Test
     fun copyIsTheLockedSpanishProductBrief() {
         assertEquals("Murdoku", MurdokuWizardCopy.MODE)
-        assertEquals("Paso 1 — Instrucciones", MurdokuWizardCopy.STEP1_TITLE)
+        assertEquals("Instrucciones", MurdokuWizardCopy.STEP1_TITLE)
         assertEquals(
             "Andá a la página de instrucciones del libro naranja y mirala con los lentes.",
             MurdokuWizardCopy.STEP1_PROMPT,
         )
         assertEquals("Listo, capturar", MurdokuWizardCopy.STEP1_CTA)
         assertEquals("Instrucciones guardadas.", MurdokuWizardCopy.STEP1_OK)
-        assertEquals("Paso 2 — Puzzle", MurdokuWizardCopy.STEP2_TITLE)
+        assertEquals("El Murdoku", MurdokuWizardCopy.STEP2_TITLE)
         assertEquals(
             "Ahora andá al Murdoku que querés resolver y encuadrá bien el grid.",
             MurdokuWizardCopy.STEP2_PROMPT,
         )
         assertEquals("Capturar puzzle", MurdokuWizardCopy.STEP2_CTA)
         assertEquals("Puzzle guardado. Analizando…", MurdokuWizardCopy.STEP2_OK)
-        assertEquals("Paso 3 — Guía", MurdokuWizardCopy.STEP3_TITLE)
+        assertEquals("Próxima jugada", MurdokuWizardCopy.STEP3_TITLE)
         assertEquals("Próxima jugada", MurdokuWizardCopy.STEP3_HEADING)
         assertEquals("Voz (stub)", MurdokuWizardCopy.VOICE_STUB)
     }
@@ -36,6 +36,7 @@ class MurdokuWizardTest {
         assertEquals(MurdokuWizardStep.INSTRUCTIONS, session.step)
         assertEquals(MurdokuAssetKind.INSTRUCTIONS, session.captureKind)
         assertEquals(MurdokuWizardCopy.STEP1_CTA, session.cta)
+        assertEquals("Instrucciones", session.stepTitle)
         assertEquals(MurdokuWizardCopy.STEP1_PROMPT, session.prompt)
         assertFalse(session.readyToHandoff)
         assertTrue(MurdokuWizardMath.handoff(session).isEmpty())
@@ -79,6 +80,40 @@ class MurdokuWizardTest {
         assertTrue(assets.all { it.meta.quality == MurdokuHandoffMeta.QUALITY })
         assertEquals("rayban-meta", MurdokuHandoffMeta.DEVICE)
         assertEquals("HIGH", MurdokuHandoffMeta.QUALITY)
+        assertTrue(MurdokuWizardMath.isCompleteHandoff(assets))
+        assertEquals("Instrucciones", start.stepTitle)
+        assertEquals("El Murdoku", afterInstructions.stepTitle)
+        assertEquals("Próxima jugada", afterPuzzle.stepTitle)
+    }
+
+    @Test
+    fun neverSendsPuzzleWithoutInstructionsFirst() {
+        val onlyPuzzle =
+            MurdokuWizardState(
+                sessionId = "orphan",
+                step = MurdokuWizardStep.GUIDE,
+                puzzle = capture("p", 9L),
+            )
+        assertTrue(MurdokuWizardMath.handoff(onlyPuzzle).isEmpty())
+        assertFalse(onlyPuzzle.readyToHandoff)
+        assertNull(MurdokuHandoffJson.payload(onlyPuzzle))
+
+        val onlyInstructions =
+            MurdokuWizardMath.acceptCapture(
+                MurdokuWizardMath.newSession("sid-2"),
+                capture("i", 1L),
+            )
+        assertTrue(MurdokuWizardMath.handoff(onlyInstructions).isEmpty())
+        assertNull(MurdokuHandoffJson.payload(onlyInstructions))
+
+        val skippedPuzzle =
+            MurdokuWizardMath.acceptCapture(
+                MurdokuWizardState(sessionId = "sid-3", step = MurdokuWizardStep.PUZZLE),
+                capture("p", 2L),
+            )
+        assertNull(skippedPuzzle.puzzle)
+        assertEquals(MurdokuWizardStep.PUZZLE, skippedPuzzle.step)
+        assertNull(MurdokuHandoffJson.payload(skippedPuzzle))
     }
 
     @Test

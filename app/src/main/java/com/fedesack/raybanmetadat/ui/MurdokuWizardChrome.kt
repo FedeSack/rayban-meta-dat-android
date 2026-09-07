@@ -54,11 +54,6 @@ fun MurdokuWizardCard(
                 modifier = Modifier.fillMaxWidth(),
             )
         } else {
-            Text(
-                text = MurdokuWizardCopy.STEP3_HEADING,
-                style = MaterialTheme.typography.titleSmall,
-                modifier = Modifier.fillMaxWidth(),
-            )
             GuideMoves(wizard)
         }
         wizard.status?.let { status ->
@@ -129,7 +124,7 @@ fun VoiceStubChip(modifier: Modifier = Modifier) {
 @Composable
 fun MurdokuModeChip(modifier: Modifier = Modifier) {
     Text(
-        text = "Modo ${MurdokuWizardCopy.MODE}",
+        text = MurdokuWizardCopy.MODE,
         style = MaterialTheme.typography.labelMedium,
         modifier =
             modifier
@@ -161,7 +156,7 @@ fun MurdokuEntryCard(
             modifier = Modifier.fillMaxWidth(),
         )
         Text(
-            text = "Wizard in-app · instrucciones, tablero y próxima jugada",
+            text = "Instrucciones → El Murdoku → Próxima jugada",
             style = MaterialTheme.typography.bodyLarge,
             textAlign = TextAlign.Center,
             modifier = Modifier.fillMaxWidth(),

@@ -23,16 +23,16 @@ enum class MurdokuAssetKind(
 
 object MurdokuWizardCopy {
     const val MODE = "Murdoku"
-    const val STEP1_TITLE = "Paso 1 — Instrucciones"
+    const val STEP1_TITLE = "Instrucciones"
     const val STEP1_PROMPT = "Andá a la página de instrucciones del libro naranja y mirala con los lentes."
     const val STEP1_CTA = "Listo, capturar"
     const val STEP1_OK = "Instrucciones guardadas."
-    const val STEP2_TITLE = "Paso 2 — Puzzle"
+    const val STEP2_TITLE = "El Murdoku"
     const val STEP2_PROMPT = "Ahora andá al Murdoku que querés resolver y encuadrá bien el grid."
     const val STEP2_CTA = "Capturar puzzle"
     const val STEP2_OK = "Puzzle guardado. Analizando…"
-    const val STEP3_TITLE = "Paso 3 — Guía"
-    const val STEP3_HEADING = "Próxima jugada"
+    const val STEP3_TITLE = "Próxima jugada"
+    const val STEP3_HEADING = STEP3_TITLE
     const val VOICE_STUB = "Voz (stub)"
     const val GALLERY_PATH = "Pictures/RaybanDat"
     const val ENQUEUE_CTA = "Encolar análisis"
@@ -137,7 +137,8 @@ object MurdokuWizardMath {
                     status = MurdokuWizardCopy.STEP1_OK,
                     analyzing = false,
                 )
-            MurdokuWizardStep.PUZZLE ->
+            MurdokuWizardStep.PUZZLE -> {
+                if (state.instructions == null) return state
                 state.copy(
                     puzzle = tagged.copy(kind = MurdokuAssetKind.PUZZLE),
                     step = MurdokuWizardStep.GUIDE,
@@ -145,6 +146,7 @@ object MurdokuWizardMath {
                     analyzing = true,
                     analysis = stubAnalysis(state.sessionId),
                 )
+            }
             MurdokuWizardStep.GUIDE -> state
         }
     }
@@ -169,6 +171,13 @@ object MurdokuWizardMath {
             asset(MurdokuAssetKind.PUZZLE, puzzle),
         )
     }
+
+    fun isCompleteHandoff(assets: List<MurdokuHandoffAsset>): Boolean =
+        assets.size == 2 &&
+            assets[0].kind == MurdokuAssetKind.INSTRUCTIONS &&
+            assets[1].kind == MurdokuAssetKind.PUZZLE &&
+            assets.all { it.meta.device == MurdokuHandoffMeta.DEVICE } &&
+            assets.all { it.meta.quality == MurdokuHandoffMeta.QUALITY }
 
     fun stubAnalysis(sessionId: String): MurdokuAnalysis = MurdokuAnalysis(sessionId = sessionId)
 
@@ -203,9 +212,11 @@ object MurdokuHandoffJson {
             "}"
     }
 
-    fun payload(state: MurdokuWizardState): String {
+    fun payload(state: MurdokuWizardState): String? {
+        val items = MurdokuWizardMath.handoff(state)
+        if (!MurdokuWizardMath.isCompleteHandoff(items)) return null
         val assets =
-            MurdokuWizardMath.handoff(state).joinToString(",") { item ->
+            items.joinToString(",") { item ->
                 "{" +
                     "\"kind\":\"${item.kind.json}\"," +
                     "\"uri\":\"${IntentJson.escape(item.capture.uri)}\"," +
