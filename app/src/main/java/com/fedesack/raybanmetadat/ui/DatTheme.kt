@@ -33,9 +33,9 @@ object DatTokens {
     val stageTop = Color(0xFF0F141F)
     val stageMid = Color(0xFF1F2938)
     val stageBottom = Color(0xFF080A0D)
+    val panel = Color(0xF01C1C1E)
+    val scrim = Color(0x8C000000)
 
-    val safeTop = 59.dp
-    val safeBottom = 34.dp
     val pagePad = 24.dp
     val headerGap = 16.dp
     val headerTop = 24.dp
@@ -48,8 +48,7 @@ object DatTokens {
     val buttonRadius = 14.dp
     val buttonGap = 12.dp
     val ctaBottom = 16.dp
-    val latencyX = 24.dp
-    val latencyY = 67.dp
+    val hudGap = 8.dp
     val latencyPadH = 12.dp
     val latencyPadV = 8.dp
     val latencyRadius = 10.dp

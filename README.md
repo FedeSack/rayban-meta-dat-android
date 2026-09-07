@@ -11,7 +11,7 @@ Solo el SDK oficial. No hay cámara web inventada ni scraping de Meta AI. Una PW
 Dos pantallas, oscuras y con poco chrome.
 
 1. **Conectar / registrar.** Registro con Meta AI, o Mock Device Kit sin hardware.
-2. **Preview.** Surface de frames + HUD `N ms` (con caption `pipeline` cuando aplica) + Iniciar / Detener.
+2. **Preview.** Surface de frames a pantalla completa. El chrome (HUD, Features, Start/Stop) respeta `WindowInsets` (`statusBars` + `navigationBars` + cutout). Entre Start y el primer frame hay overlay **Encendiendo cámara…**. HUD compacto `N ms` (caption `pipeline` cuando aplica). El panel de analíticas y el de Features se encienden a mano.
 
 El dominio es el del SDK. `DeviceSessionState` es la sesión. `StreamState` es el stream. La app no remapea esas máquinas de estados. Configuración pedida: `VideoQuality.HIGH` (720×1280) a 24 fps, `compressVideo = true`. El API acepta 2, 7, 15, 24 o 30.
 
@@ -33,9 +33,38 @@ Cuando Meta abra publicación, reemplazá los placeholders `0` por el Applicatio
 
 El HUD muestra el número en ms. Si el PTS no es un reloj `elapsedRealtime` de las lentes (el caso habitual), el chip agrega la etiqueta `pipeline`.
 
-`VideoFrame.presentationTimeUs` es el PTS del frame. Si ese valor parece `elapsedRealtime` en microsegundos (edad entre 0 y 10 s), el número es captura → pantalla. Si el PTS es tiempo relativo al stream, el número es llegada → draw. Eso es latencia de pipeline / decode, no un reloj de las lentes.
+`VideoFrame.presentationTimeUs` es el PTS del frame. Si ese valor parece `elapsedRealtime` en microsegundos (edad entre 0 y 10 s), el número es captura → pantalla. Si el PTS es tiempo relativo al stream, el número es llegada → draw. Eso es latencia de pipeline / decode, no un reloj de las lentes. En HEVC se conserva el timestamp de llegada por la cola del decoder; no se usa el clock de present como si fuera receive (eso pintaba `0 ms`).
 
 No inventes un "glass clock" que el SDK no expone.
+
+## Analíticas de sesión (locales)
+
+Capa `StreamSessionAnalytics` + tag Logcat `RaybanDat/Analytics`. Solo señales reales del SDK / timing de la app. No hay bitrate ni reloj de lentes inventado.
+
+Campos expuestos (HUD expandible si `analyticsOverlay` está on, y `adb logcat -s RaybanDat/Analytics`):
+
+| Campo | Origen |
+| --- | --- |
+| `latencyMs` + `latencyMode` (`GLASS` / `PIPELINE`) | PTS vs `elapsedRealtime`, misma regla que el HUD |
+| `interArrivalMs` + `estimatedFps` | Intervalos de llegada de `videoStream` |
+| `timeToFirstFrameMs` / `timeToFirstArrivalMs` | Start → primer present / primer arrival |
+| `sessionState` / `streamState` + transiciones | `DeviceSessionState` / `StreamState` |
+| `width` × `height` + `resolutionChanges` | `VideoFrame` y `MediaCodec` output format |
+| `framesArrived` / `framesPresented` | Collect vs `FrameSink` present |
+| `decodePath` (`HEVC` / `YUV`) | `VideoFrame.isCompressed` |
+| `queueDrops` | Cola HEVC llena en `FrameSink` |
+| `decodeErrors` | `MediaCodec.Callback.onError` |
+| `configuredQuality` / `configuredFps` / `compressVideo` | Lo que se pasa a `StreamConfiguration` (HIGH / 24 / true) |
+
+Al Stop se loguea un summary (ring buffer de 128 eventos). `verboseLogcat` agrega snapshots periódicos.
+
+## Feature flags
+
+Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayban_dat_flags`). Defaults todos **off**.
+
+- `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir).
+- `verboseLogcat` — líneas extra `RaybanDat/Analytics`.
+- `gazeBridge` / `voiceAssist` — stubs, no-op hasta cablearlos. No hay producto gaze/Windows en esta app.
 
 ## Cómo buildear el APK debug
 
@@ -58,7 +87,7 @@ El scheme de callback es `raybanmetadat`. Meta AI vuelve a la app por ese scheme
 
 ## Layout
 
-`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency` es la única cuenta del HUD.
+`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas y los feature flags. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica. `Latency` y `StreamSessionAnalytics` son cuentas puras (tienen tests).
 
 ## Docs
 

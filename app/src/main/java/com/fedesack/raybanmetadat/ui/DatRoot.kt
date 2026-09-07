@@ -3,6 +3,7 @@ package com.fedesack.raybanmetadat.ui
 import android.view.Surface
 import androidx.compose.runtime.Composable
 import com.fedesack.raybanmetadat.AppState
+import com.fedesack.raybanmetadat.FeatureFlag
 import com.fedesack.raybanmetadat.Phase
 
 @Composable
@@ -15,6 +16,7 @@ fun DatRoot(
     onStop: () -> Unit,
     onSurface: (Surface) -> Unit,
     onSurfaceGone: () -> Unit,
+    onFlagChange: (FeatureFlag, Boolean) -> Unit,
 ) {
     when (state.phase) {
         Phase.CONNECT ->
@@ -22,6 +24,7 @@ fun DatRoot(
                 state = state,
                 onRegister = onRegister,
                 onMock = onMock,
+                onFlagChange = onFlagChange,
             )
         Phase.LIVE ->
             LiveScreen(
@@ -31,6 +34,7 @@ fun DatRoot(
                 onStop = onStop,
                 onSurface = onSurface,
                 onSurfaceGone = onSurfaceGone,
+                onFlagChange = onFlagChange,
             )
     }
 }

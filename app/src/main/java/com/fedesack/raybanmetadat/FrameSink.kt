@@ -15,13 +15,25 @@ import android.view.Surface
 import com.meta.wearable.dat.camera.types.VideoFrame
 import java.io.ByteArrayOutputStream
 import java.nio.ByteBuffer
+import java.util.ArrayDeque
 import java.util.concurrent.LinkedBlockingQueue
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicBoolean
 
+data class PresentedFrame(
+    val presentationTimeUs: Long,
+    val receivedElapsedMs: Long,
+    val width: Int,
+    val height: Int,
+    val decodePath: DecodePath,
+)
+
 class FrameSink(
-    private val onPresented: (presentationTimeUs: Long, receivedElapsedMs: Long) -> Unit,
+    private val onPresented: (PresentedFrame) -> Unit,
     private val onFirstFrame: () -> Unit,
+    private val onQueueDrop: () -> Unit = {},
+    private val onDecodeError: (String) -> Unit = {},
+    private val onDecoderFormat: (width: Int, height: Int) -> Unit = { _, _ -> },
 ) {
     private data class Packet(
         val bytes: ByteArray,
@@ -31,11 +43,13 @@ class FrameSink(
     )
 
     private val queue = LinkedBlockingQueue<Packet>(8)
+    private val arrivals = ArrayDeque<Long>()
     private val first = AtomicBoolean(true)
     @Volatile private var surface: Surface? = null
     @Volatile private var codec: MediaCodec? = null
     @Volatile private var decoderThread: HandlerThread? = null
     @Volatile private var configured = false
+    @Volatile private var decodePath = DecodePath.HEVC
     private var width = 0
     private var height = 0
 
@@ -45,6 +59,7 @@ class FrameSink(
 
     fun detach() {
         queue.clear()
+        synchronized(arrivals) { arrivals.clear() }
         configured = false
         first.set(true)
         try {
@@ -58,18 +73,26 @@ class FrameSink(
         surface = null
     }
 
-    fun render(frame: VideoFrame, receivedElapsedMs: Long) {
+    fun render(
+        frame: VideoFrame,
+        receivedElapsedMs: Long,
+    ) {
         val dest = surface ?: return
         width = frame.width
         height = frame.height
         if (frame.isCompressed) {
+            decodePath = DecodePath.HEVC
             renderHevc(frame, receivedElapsedMs)
         } else {
+            decodePath = DecodePath.YUV
             renderYuv(frame, dest, receivedElapsedMs)
         }
     }
 
-    private fun renderHevc(frame: VideoFrame, receivedElapsedMs: Long) {
+    private fun renderHevc(
+        frame: VideoFrame,
+        receivedElapsedMs: Long,
+    ) {
         ensureCodec()
         val flags =
             if (frame.isCodecConfig) MediaCodec.BUFFER_FLAG_CODEC_CONFIG
@@ -84,6 +107,7 @@ class FrameSink(
         if (!queue.offer(packet)) {
             queue.poll()
             queue.offer(packet)
+            onQueueDrop()
         }
     }
 
@@ -100,7 +124,10 @@ class FrameSink(
         created.configure(format, dest, null, 0)
         created.setCallback(
             object : MediaCodec.Callback() {
-                override fun onInputBufferAvailable(codec: MediaCodec, index: Int) {
+                override fun onInputBufferAvailable(
+                    codec: MediaCodec,
+                    index: Int,
+                ) {
                     val input = codec.getInputBuffer(index)
                     val packet = queue.poll(200, TimeUnit.MILLISECONDS)
                     if (input == null || packet == null) {
@@ -109,6 +136,9 @@ class FrameSink(
                     }
                     input.clear()
                     input.put(packet.bytes)
+                    if (packet.flags and MediaCodec.BUFFER_FLAG_CODEC_CONFIG == 0) {
+                        synchronized(arrivals) { arrivals.addLast(packet.receivedElapsedMs) }
+                    }
                     codec.queueInputBuffer(
                         index,
                         0,
@@ -126,13 +156,31 @@ class FrameSink(
                     val render = info.size > 0
                     codec.releaseOutputBuffer(index, render)
                     if (render) {
-                        markPresented(info.presentationTimeUs, SystemClock.elapsedRealtime())
+                        val received =
+                            synchronized(arrivals) {
+                                arrivals.pollFirst() ?: SystemClock.elapsedRealtime()
+                            }
+                        markPresented(info.presentationTimeUs, received)
                     }
                 }
 
-                override fun onError(codec: MediaCodec, e: MediaCodec.CodecException) {}
+                override fun onError(
+                    codec: MediaCodec,
+                    e: MediaCodec.CodecException,
+                ) {
+                    onDecodeError(e.diagnosticInfo ?: e.message ?: "codec")
+                }
 
-                override fun onOutputFormatChanged(codec: MediaCodec, format: MediaFormat) {}
+                override fun onOutputFormatChanged(
+                    codec: MediaCodec,
+                    format: MediaFormat,
+                ) {
+                    val outWidth = format.getInteger(MediaFormat.KEY_WIDTH)
+                    val outHeight = format.getInteger(MediaFormat.KEY_HEIGHT)
+                    if (outWidth > 0 && outHeight > 0) {
+                        onDecoderFormat(outWidth, outHeight)
+                    }
+                }
             },
             Handler(thread.looper),
         )
@@ -141,7 +189,11 @@ class FrameSink(
         configured = true
     }
 
-    private fun renderYuv(frame: VideoFrame, dest: Surface, receivedElapsedMs: Long) {
+    private fun renderYuv(
+        frame: VideoFrame,
+        dest: Surface,
+        receivedElapsedMs: Long,
+    ) {
         val nv21 = i420ToNv21(frame.buffer, frame.width, frame.height)
         val yuv = YuvImage(nv21, ImageFormat.NV21, frame.width, frame.height, null)
         val jpeg = ByteArrayOutputStream()
@@ -151,7 +203,10 @@ class FrameSink(
         markPresented(frame.presentationTimeUs, receivedElapsedMs)
     }
 
-    private fun drawBitmap(dest: Surface, bitmap: Bitmap) {
+    private fun drawBitmap(
+        dest: Surface,
+        bitmap: Bitmap,
+    ) {
         val canvas = dest.lockHardwareCanvas()
         try {
             val sx = canvas.width.toFloat() / bitmap.width.toFloat()
@@ -170,11 +225,22 @@ class FrameSink(
         bitmap.recycle()
     }
 
-    private fun markPresented(presentationTimeUs: Long, receivedElapsedMs: Long) {
+    private fun markPresented(
+        presentationTimeUs: Long,
+        receivedElapsedMs: Long,
+    ) {
         if (first.compareAndSet(true, false)) {
             onFirstFrame()
         }
-        onPresented(presentationTimeUs, receivedElapsedMs)
+        onPresented(
+            PresentedFrame(
+                presentationTimeUs = presentationTimeUs,
+                receivedElapsedMs = receivedElapsedMs,
+                width = width,
+                height = height,
+                decodePath = decodePath,
+            ),
+        )
     }
 
     private fun copyBuffer(buffer: ByteBuffer): ByteArray {
@@ -184,7 +250,11 @@ class FrameSink(
         return bytes
     }
 
-    private fun i420ToNv21(buffer: ByteBuffer, width: Int, height: Int): ByteArray {
+    private fun i420ToNv21(
+        buffer: ByteBuffer,
+        width: Int,
+        height: Int,
+    ): ByteArray {
         val ySize = width * height
         val cSize = ySize / 4
         val src = buffer.duplicate()

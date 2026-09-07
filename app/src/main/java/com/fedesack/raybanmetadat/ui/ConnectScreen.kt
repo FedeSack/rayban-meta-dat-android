@@ -3,6 +3,7 @@ package com.fedesack.raybanmetadat.ui
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -10,7 +11,9 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.safeDrawingPadding
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
@@ -20,11 +23,16 @@ import androidx.compose.material3.Text
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.style.TextAlign
 import com.fedesack.raybanmetadat.AppState
+import com.fedesack.raybanmetadat.FeatureFlag
 import com.fedesack.raybanmetadat.R
 
 @Composable
@@ -32,72 +40,96 @@ fun ConnectScreen(
     state: AppState,
     onRegister: () -> Unit,
     onMock: () -> Unit,
+    onFlagChange: (FeatureFlag, Boolean) -> Unit,
 ) {
+    var showFlags by remember { mutableStateOf(false) }
     val connected = state.registered
-    Column(
+    Box(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(DatTokens.bg)
-                .padding(
-                    start = DatTokens.pagePad,
-                    end = DatTokens.pagePad,
-                    top = DatTokens.safeTop,
-                    bottom = DatTokens.safeBottom,
-                ),
-        verticalArrangement = Arrangement.SpaceBetween,
-        horizontalAlignment = Alignment.CenterHorizontally,
+                .background(DatTokens.bg),
     ) {
         Column(
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(top = DatTokens.headerTop),
+                    .fillMaxSize()
+                    .safeDrawingPadding()
+                    .padding(horizontal = DatTokens.pagePad),
+            verticalArrangement = Arrangement.SpaceBetween,
             horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(DatTokens.headerGap),
         ) {
-            StatusChip(connected = connected)
-            Text(
-                text = "Ray-Ban Meta",
-                style = MaterialTheme.typography.headlineLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            Text(
-                text = "Stream your Ray-Ban Meta camera via Meta Wearables Device Access Toolkit.",
-                style = MaterialTheme.typography.bodyLarge,
-                textAlign = TextAlign.Center,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            state.message?.let {
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(top = DatTokens.headerTop),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(DatTokens.headerGap),
+            ) {
+                StatusChip(connected = connected)
                 Text(
-                    text = it,
-                    color = DatTokens.danger,
-                    style = MaterialTheme.typography.labelMedium,
+                    text = "Ray-Ban Meta",
+                    style = MaterialTheme.typography.headlineLarge,
                     textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    text = "Stream your Ray-Ban Meta camera via Meta Wearables Device Access Toolkit.",
+                    style = MaterialTheme.typography.bodyLarge,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                state.message?.let {
+                    Text(
+                        text = it,
+                        color = DatTokens.danger,
+                        style = MaterialTheme.typography.labelMedium,
+                        textAlign = TextAlign.Center,
+                    )
+                }
+            }
+            Column(
+                modifier =
+                    Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = DatTokens.ctaBottom),
+                verticalArrangement = Arrangement.spacedBy(DatTokens.buttonGap),
+            ) {
+                DatButton(
+                    label = "Connect with Meta AI",
+                    primary = true,
+                    enabled = state.androidReady,
+                    onClick = onRegister,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                DatButton(
+                    label = "Use Mock Device",
+                    primary = false,
+                    enabled = state.androidReady,
+                    onClick = onMock,
+                    modifier = Modifier.fillMaxWidth(),
                 )
             }
         }
-        Column(
+        FeaturesToggle(
+            open = showFlags,
+            onClick = { showFlags = !showFlags },
             modifier =
                 Modifier
-                    .fillMaxWidth()
-                    .padding(bottom = DatTokens.ctaBottom),
-            verticalArrangement = Arrangement.spacedBy(DatTokens.buttonGap),
-        ) {
-            DatButton(
-                label = "Connect with Meta AI",
-                primary = true,
-                enabled = state.androidReady,
-                onClick = onRegister,
-                modifier = Modifier.fillMaxWidth(),
-            )
-            DatButton(
-                label = "Use Mock Device",
-                primary = false,
-                enabled = state.androidReady,
-                onClick = onMock,
-                modifier = Modifier.fillMaxWidth(),
+                    .align(Alignment.TopEnd)
+                    .statusBarsPadding()
+                    .padding(end = DatTokens.pagePad, top = DatTokens.hudGap),
+        )
+        if (showFlags) {
+            FeatureFlagsPanel(
+                flags = state.flags,
+                onFlagChange = onFlagChange,
+                modifier =
+                    Modifier
+                        .align(Alignment.TopEnd)
+                        .statusBarsPadding()
+                        .padding(end = DatTokens.pagePad, top = 48.dp),
             )
         }
     }
