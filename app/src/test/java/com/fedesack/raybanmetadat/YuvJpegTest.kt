@@ -72,7 +72,9 @@ class YuvJpegNv21Test {
     fun interleavedUvPixelStrideTwoMatchesMediaCodecNv21() {
         val vu = byteArrayOf(0xC0.toByte(), 0x80.toByte(), 0xC1.toByte(), 0x81.toByte())
         val v = ByteBuffer.wrap(vu)
-        val u = ByteBuffer.wrap(vu).position(1).slice()
+        val uOffset = ByteBuffer.wrap(vu)
+        uOffset.position(1)
+        val u = uOffset.slice()
         val nv21 =
             YuvJpeg.yuv420888ToNv21(
                 width = 4,
