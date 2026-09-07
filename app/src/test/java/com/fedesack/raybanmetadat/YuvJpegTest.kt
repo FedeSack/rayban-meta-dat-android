@@ -198,6 +198,22 @@ class YuvJpegNv21Test {
     }
 
     @Test(expected = IllegalArgumentException::class)
+    fun rejectsDirectByteBuffersSoImageReaderPlanesCannotSegv() {
+        YuvJpeg.yuv420888ToNv21(
+            width = 4,
+            height = 2,
+            y = ByteBuffer.allocateDirect(8),
+            yRowStride = 4,
+            u = bytes(1),
+            uRowStride = 2,
+            uPixelStride = 1,
+            v = bytes(1),
+            vRowStride = 2,
+            vPixelStride = 1,
+        )
+    }
+
+    @Test(expected = IllegalArgumentException::class)
     fun rejectsZeroSize() {
         YuvJpeg.yuv420888ToNv21(
             width = 0,

@@ -85,8 +85,9 @@ object YuvJpeg {
      * ImageReader) report a [ByteBuffer.limit] larger than the mapped native
      * memory. The last row of each plane has no row-stride padding:
      * `rowStride * (rows - 1) + pixelStride * (cols - 1) + 1`. Reading past
-     * that with `get()`/`memcpy` SIGSEGVs (SEGV_ACCERR). Never trust limit()
-     * as the readable end, and never clamp an invalid index into that range.
+     * that with `get()`/`memcpy` SIGSEGVs (SEGV_ACCERR). Direct buffers are
+     * rejected so MediaCodec ImageReader planes cannot reach [ByteBuffer.get].
+     * Heap-buffer tests and the DAT uncompressed YUV path stay valid.
      */
     fun yuv420888ToNv21(
         width: Int,
@@ -113,6 +114,9 @@ object YuvJpeg {
         val outH = height and 0x7FFFFFFE
         if (outW <= 0 || outH <= 0) {
             throw IllegalArgumentException("yuv even size $width x $height")
+        }
+        if (y.isDirect || u.isDirect || v.isDirect) {
+            throw IllegalArgumentException("direct Image planes are unsafe")
         }
         if (y.remaining() <= 0) {
             throw IllegalArgumentException("empty y plane")
