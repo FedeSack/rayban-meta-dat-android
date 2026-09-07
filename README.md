@@ -1,5 +1,13 @@
 # rayban-meta-dat-android
 
-Kotlin + Meta Wearables DAT: stream en vivo de la cámara de Ray-Ban Meta + HUD de latencia (ms).
+**`main`** — estable / vacío por ahora (sin app hasta el primer release versionado).
 
-Hermano de https://github.com/FedeSack/rayban-meta-dat-ios
+**`develop`** — línea de trabajo. Acá vive el prototipo.
+
+**`feature/*`** — una feature por rama → PR a `develop`.
+
+Más adelante: tags, releases y merges `develop` → `main`.
+
+---
+
+Trabajo actual en la rama `develop`. Hermano: ver también rayban-meta-dat-ios / rayban-meta-dat-android.
