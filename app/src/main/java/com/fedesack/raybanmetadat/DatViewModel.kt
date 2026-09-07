@@ -73,6 +73,10 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
 
     fun register(activity: Activity) {
         _state.update { it.copy(source = DeviceSource.META_AI, message = null) }
+        if (_state.value.canOpenLive) {
+            openLive()
+            return
+        }
         Wearables.startRegistration(activity)
     }
 
@@ -93,9 +97,10 @@ class DatViewModel(application: Application) : AndroidViewModel(application) {
                                 source = DeviceSource.MOCK,
                                 registered = true,
                                 registrationLabel = "mock",
-                                message = "Mock Device listo",
+                                message = null,
                             )
                         }
+                        openLive()
                     },
                     onFailure = { error, _ ->
                         _state.update { it.copy(message = error.description) }

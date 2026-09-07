@@ -1,76 +1,160 @@
 package com.fedesack.raybanmetadat.ui
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.systemBarsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
-import androidx.compose.runtime.Composable
-import androidx.compose.ui.Modifier
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.ui.unit.dp
+import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.style.TextAlign
 import com.fedesack.raybanmetadat.AppState
-import com.fedesack.raybanmetadat.DeviceSource
+import com.fedesack.raybanmetadat.R
 
 @Composable
 fun ConnectScreen(
     state: AppState,
     onRegister: () -> Unit,
     onMock: () -> Unit,
-    onOpenLive: () -> Unit,
 ) {
+    val connected = state.registered
     Column(
         modifier =
             Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
-                .systemBarsPadding()
-                .padding(24.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+                .background(DatTokens.bg)
+                .padding(
+                    start = DatTokens.pagePad,
+                    end = DatTokens.pagePad,
+                    top = DatTokens.safeTop,
+                    bottom = DatTokens.safeBottom,
+                ),
+        verticalArrangement = Arrangement.SpaceBetween,
+        horizontalAlignment = Alignment.CenterHorizontally,
     ) {
-        Text("Ray-Ban Meta DAT", style = MaterialTheme.typography.headlineSmall)
-        Text(
-            "Registro oficial via Meta AI o Mock Device Kit. Sin SDK de cámara web.",
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(top = DatTokens.headerTop),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DatTokens.headerGap),
+        ) {
+            StatusChip(connected = connected)
+            Text(
+                text = "Ray-Ban Meta",
+                style = MaterialTheme.typography.headlineLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(
+                text = "Stream your Ray-Ban Meta camera via Meta Wearables Device Access Toolkit.",
+                style = MaterialTheme.typography.bodyLarge,
+                textAlign = TextAlign.Center,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            state.message?.let {
+                Text(
+                    text = it,
+                    color = DatTokens.danger,
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                )
+            }
+        }
+        Column(
+            modifier =
+                Modifier
+                    .fillMaxWidth()
+                    .padding(bottom = DatTokens.ctaBottom),
+            verticalArrangement = Arrangement.spacedBy(DatTokens.buttonGap),
+        ) {
+            DatButton(
+                label = "Connect with Meta AI",
+                primary = true,
+                enabled = state.androidReady,
+                onClick = onRegister,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            DatButton(
+                label = "Use Mock Device",
+                primary = false,
+                enabled = state.androidReady,
+                onClick = onMock,
+                modifier = Modifier.fillMaxWidth(),
+            )
+        }
+    }
+}
+
+@Composable
+private fun StatusChip(connected: Boolean) {
+    Row(
+        modifier =
+            Modifier
+                .background(DatTokens.surface, RoundedCornerShape(DatTokens.chipRadius))
+                .padding(horizontal = DatTokens.chipPadH, vertical = DatTokens.chipPadV),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Image(
+            painter =
+                painterResource(
+                    if (connected) R.drawable.status_dot_connected
+                    else R.drawable.status_dot_disconnected,
+                ),
+            contentDescription = null,
+            modifier = Modifier.size(DatTokens.dot),
         )
-        Spacer(Modifier.height(8.dp))
-        Text("Bluetooth: ${if (state.androidReady) "ok" else "pendiente"}")
-        Text("Registro: ${state.registrationLabel}")
+        Spacer(Modifier.width(DatTokens.chipGap))
         Text(
-            "Fuente: ${if (state.source == DeviceSource.MOCK) "Mock Device" else "Meta AI"}",
+            text = if (connected) "Connected" else "Disconnected",
+            style = MaterialTheme.typography.labelMedium,
         )
-        state.message?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-        Spacer(Modifier.height(12.dp))
-        Button(
-            onClick = onRegister,
-            enabled = state.androidReady,
-            modifier = Modifier.fillMaxWidth(),
-            colors = ButtonDefaults.buttonColors(),
-        ) {
-            Text("Registrar con Meta AI")
-        }
-        Button(
-            onClick = onMock,
-            enabled = state.androidReady,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Usar Mock Device")
-        }
-        TextButton(
-            onClick = onOpenLive,
-            enabled = state.canOpenLive,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text("Abrir preview")
-        }
+    }
+}
+
+@Composable
+fun DatButton(
+    label: String,
+    primary: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    Button(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier.height(DatTokens.buttonH),
+        shape = RoundedCornerShape(DatTokens.buttonRadius),
+        contentPadding = PaddingValues(horizontal = 20.dp),
+        elevation = ButtonDefaults.buttonElevation(defaultElevation = 0.dp, pressedElevation = 0.dp),
+        colors =
+            ButtonDefaults.buttonColors(
+                containerColor = if (primary) DatTokens.accent else DatTokens.surface,
+                contentColor = DatTokens.white,
+                disabledContainerColor = (if (primary) DatTokens.accent else DatTokens.surface).copy(alpha = 0.4f),
+                disabledContentColor = DatTokens.white.copy(alpha = 0.5f),
+            ),
+    ) {
+        Text(
+            text = label,
+            style = if (primary) MaterialTheme.typography.titleMedium else MaterialTheme.typography.titleSmall,
+        )
     }
 }
