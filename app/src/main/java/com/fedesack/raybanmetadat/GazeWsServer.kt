@@ -5,6 +5,9 @@ import java.net.InetSocketAddress
 import java.net.ServerSocket
 import java.net.Socket
 import java.util.concurrent.CopyOnWriteArraySet
+import java.util.concurrent.ExecutorService
+import java.util.concurrent.Executors
+import java.util.concurrent.RejectedExecutionException
 import java.util.concurrent.atomic.AtomicBoolean
 import java.util.concurrent.atomic.AtomicInteger
 
@@ -20,6 +23,8 @@ interface GazeSocketHub {
     fun broadcastText(text: String)
 
     fun broadcastBinary(bytes: ByteArray)
+
+    fun broadcastFrame(text: String, jpeg: ByteArray)
 }
 
 class GazeWsServer(
@@ -33,6 +38,7 @@ class GazeWsServer(
         private set
     private var server: ServerSocket? = null
     private var acceptThread: Thread? = null
+    private var writers: ExecutorService = newWriterPool()
 
     override val clientCount: Int get() = clients.size
     override val localPort: Int get() = boundPort.get()
@@ -40,6 +46,7 @@ class GazeWsServer(
     override fun start(): Boolean {
         if (!running.compareAndSet(false, true)) return listening
         return try {
+            if (writers.isShutdown) writers = newWriterPool()
             val socket = ServerSocket()
             socket.reuseAddress = true
             socket.bind(InetSocketAddress(host, port), 8)
@@ -66,6 +73,7 @@ class GazeWsServer(
         server = null
         clients.toList().forEach { it.close() }
         clients.clear()
+        writers.shutdownNow()
         acceptThread?.join(500)
         acceptThread = null
     }
@@ -78,6 +86,15 @@ class GazeWsServer(
         broadcast(GazeWsFrames.encodeBinary(bytes))
     }
 
+    override fun broadcastFrame(text: String, jpeg: ByteArray) {
+        val meta = GazeWsFrames.encodeText(text)
+        val bin = GazeWsFrames.encodeBinary(jpeg)
+        val combined = ByteArray(meta.size + bin.size)
+        System.arraycopy(meta, 0, combined, 0, meta.size)
+        System.arraycopy(bin, 0, combined, meta.size, bin.size)
+        clients.forEach { it.offer(combined) }
+    }
+
     private fun broadcast(frame: ByteArray) {
         clients.forEach { client ->
             if (!client.send(frame)) {
@@ -86,6 +103,11 @@ class GazeWsServer(
             }
         }
     }
+
+    private fun newWriterPool(): ExecutorService =
+        Executors.newCachedThreadPool { task ->
+            Thread(task, "gaze-ws-send").apply { isDaemon = true }
+        }
 
     private fun acceptLoop(socket: ServerSocket) {
         while (running.get()) {
@@ -105,6 +127,7 @@ class GazeWsServer(
     private fun handle(socket: Socket) {
         try {
             socket.tcpNoDelay = true
+            runCatching { socket.setSendBufferSize(GazeWs.SEND_BUFFER_BYTES) }
             val input = socket.getInputStream()
             val output = socket.getOutputStream()
             val head = GazeWsHandshake.readHead(input)
@@ -146,11 +169,33 @@ class GazeWsServer(
         }
     }
 
-    private class Client(
+    private inner class Client(
         private val socket: Socket,
         private val output: OutputStream,
     ) {
-        fun send(frame: ByteArray): Boolean =
+        private val mailbox =
+            GazeLatestSend<ByteArray>(
+                deliver = { frame ->
+                    val ok = writeLocked(frame)
+                    if (!ok) detach()
+                    ok
+                },
+                execute = { task ->
+                    try {
+                        writers.execute(task)
+                    } catch (_: RejectedExecutionException) {
+                        throw RejectedExecutionException("gaze-ws-send closed")
+                    }
+                },
+            )
+
+        fun offer(frame: ByteArray) {
+            mailbox.offer(frame)
+        }
+
+        fun send(frame: ByteArray): Boolean = writeLocked(frame)
+
+        private fun writeLocked(frame: ByteArray): Boolean =
             try {
                 synchronized(output) {
                     output.write(frame)
@@ -162,7 +207,13 @@ class GazeWsServer(
             }
 
         fun close() {
+            mailbox.clear()
             runCatching { socket.close() }
+        }
+
+        private fun detach() {
+            close()
+            clients.remove(this)
         }
     }
 }

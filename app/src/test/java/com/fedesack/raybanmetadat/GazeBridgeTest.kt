@@ -2,6 +2,7 @@ package com.fedesack.raybanmetadat
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -69,9 +70,13 @@ class GazePaceTest {
     @Test
     fun targetIntervalStaysInside10to15Fps() {
         assertEquals(83L, GazeWs.TARGET_INTERVAL_MS)
-        assertEquals(66L, GazeWs.MIN_INTERVAL_MS)
+        assertEquals(83L, GazeWs.MIN_INTERVAL_MS)
         assertTrue(GazeWs.TARGET_FPS in 10..15)
-        assertEquals(15, GazeWs.MAX_FPS)
+        assertEquals(12, GazeWs.TARGET_FPS)
+        assertEquals(12, GazeWs.MAX_FPS)
+        assertEquals(45, GazeWs.JPEG_QUALITY)
+        assertTrue(GazeWs.JPEG_QUALITY in 40..50)
+        assertEquals(640, GazeWs.MAX_JPEG_WIDTH)
     }
 }
 
@@ -157,6 +162,7 @@ class GazeJpegPipelineTest {
                 encodeYuv = { yuv -> byteArrayOf(0xFF.toByte(), 0xD8.toByte(), yuv.width.toByte()) },
                 nowMs = { now },
                 intervalMs = 80L,
+                maxWidth = 10_000,
             )
         pipeline.start()
         pipeline.submit(720, 1280, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
@@ -276,6 +282,231 @@ class GazeJpegPipelineTest {
         }
         assertNull(pipeline.poll())
         pipeline.stop()
+    }
+
+    @Test
+    fun latestYuvOverwritesAndPollConsumesSoStaleCannotPileUp() {
+        var now = 1_000L
+        var encodes = 0
+        val seen = mutableListOf<Int>()
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = { yuv ->
+                    encodes += 1
+                    seen += yuv.width
+                    byteArrayOf(yuv.width.toByte())
+                },
+                nowMs = { now },
+                intervalMs = 80L,
+                maxWidth = 10_000,
+            )
+        pipeline.start()
+        pipeline.submit(100, 80, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
+            ByteArray(8)
+        }
+        pipeline.submit(200, 80, compressed = false, codecConfig = false, presentationTimeUs = 2L) {
+            ByteArray(8)
+        }
+        pipeline.submit(320, 80, compressed = false, codecConfig = false, presentationTimeUs = 3L) {
+            ByteArray(8)
+        }
+        assertEquals(2, pipeline.overwrittenYuvCount)
+        val first = pipeline.poll()
+        assertEquals(320, first!!.meta.w)
+        assertEquals(listOf(320), seen)
+        assertEquals(1, encodes)
+        assertFalse(pipeline.pendingYuv)
+        assertNull("consumed YUV must not be re-emitted", pipeline.poll())
+
+        now = 1_080L
+        assertNull("no backlog to catch up after consume", pipeline.poll())
+        assertEquals(1, encodes)
+        pipeline.stop()
+    }
+
+    @Test
+    fun downscalesFullResBeforeEncodeAndReportsScaledMeta() {
+        var encodedW = 0
+        var encodedH = 0
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = { yuv ->
+                    encodedW = yuv.width
+                    encodedH = yuv.height
+                    byteArrayOf(0xFF.toByte(), 0xD8.toByte())
+                },
+                nowMs = { 2_000L },
+                maxWidth = 640,
+            )
+        pipeline.start()
+        pipeline.submit(720, 1280, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
+            ByteArray(720 * 1280 * 3 / 2)
+        }
+        val encoded = pipeline.poll()
+        assertEquals(640, encoded!!.meta.w)
+        assertEquals(1136, encoded.meta.h)
+        assertEquals(640, encodedW)
+        assertEquals(1136, encodedH)
+        pipeline.stop()
+    }
+
+    @Test
+    fun slowEncodeLowersFpsInsteadOfBlastingBacklog() {
+        var now = 0L
+        var encodes = 0
+        val pipeline =
+            GazeJpegPipeline(
+                encodeYuv = {
+                    encodes += 1
+                    now += 200L
+                    byteArrayOf(1)
+                },
+                nowMs = { now },
+                intervalMs = 80L,
+                maxWidth = 10_000,
+            )
+        pipeline.start()
+        repeat(8) { idx ->
+            pipeline.submit(64, 48, compressed = false, codecConfig = false, presentationTimeUs = idx.toLong()) {
+                ByteArray(4)
+            }
+        }
+        assertNotNull(pipeline.poll())
+        assertEquals(1, encodes)
+        assertEquals(200L, now)
+        assertNull("must wait a full interval after a slow encode", pipeline.poll())
+        now = 279L
+        pipeline.submit(80, 48, compressed = false, codecConfig = false, presentationTimeUs = 9L) {
+            ByteArray(4)
+        }
+        assertNull(pipeline.poll())
+        now = 280L
+        val second = pipeline.poll()
+        assertEquals(80, second!!.meta.w)
+        assertEquals(2, encodes)
+        pipeline.stop()
+    }
+}
+
+class GazeYuvScaleTest {
+    @Test
+    fun fitsPortrait720To640AndKeepsEvenHeight() {
+        val src = GazeYuv(ByteArray(720 * 1280 * 3 / 2), 720, 1280, nv21 = false)
+        val scaled = GazeYuvScale.fit(src, maxWidth = 640)
+        assertEquals(640, scaled.width)
+        assertEquals(1136, scaled.height)
+        assertFalse(scaled.nv21)
+        assertEquals(640 * 1136 * 3 / 2, scaled.bytes.size)
+    }
+
+    @Test
+    fun leavesAlreadySmallFramesUntouched() {
+        val src = GazeYuv(byteArrayOf(1, 2, 3), 320, 240, nv21 = false)
+        val scaled = GazeYuvScale.fit(src, maxWidth = 640)
+        assertTrue(src === scaled)
+        assertEquals(320, scaled.width)
+        assertEquals(240, scaled.height)
+    }
+
+    @Test
+    fun nearestNeighborI420PicksEvenSourcePixels() {
+        val y =
+            byteArrayOf(
+                0, 1, 2, 3,
+                10, 11, 12, 13,
+                20, 21, 22, 23,
+                30, 31, 32, 33,
+            )
+        val u = byteArrayOf(80.toByte(), 81.toByte(), 82.toByte(), 83.toByte())
+        val v = byteArrayOf(0xC0.toByte(), 0xC1.toByte(), 0xC2.toByte(), 0xC3.toByte())
+        val src = y + u + v
+        val out = GazeYuvScale.scaleI420(src, 4, 4, 2, 2)
+        assertEquals(6, out.size)
+        assertEquals(0.toByte(), out[0])
+        assertEquals(2.toByte(), out[1])
+        assertEquals(20.toByte(), out[2])
+        assertEquals(22.toByte(), out[3])
+        assertEquals(80.toByte(), out[4])
+        assertEquals(0xC0.toByte(), out[5])
+    }
+
+    @Test
+    fun nearestNeighborNv21KeepsVuPairs() {
+        val y = byteArrayOf(1, 2, 3, 4, 5, 6, 7, 8)
+        val vu = byteArrayOf(0xC0.toByte(), 0x80.toByte(), 0xC1.toByte(), 0x81.toByte())
+        val out = GazeYuvScale.scaleNv21(y + vu, 4, 2, 2, 2)
+        assertEquals(6, out.size)
+        assertEquals(1.toByte(), out[0])
+        assertEquals(3.toByte(), out[1])
+        assertEquals(5.toByte(), out[2])
+        assertEquals(7.toByte(), out[3])
+        assertEquals(0xC0.toByte(), out[4])
+        assertEquals(0x80.toByte(), out[5])
+    }
+}
+
+class GazeLatestSendTest {
+    @Test
+    fun pendingOverwriteDropsStaleAndSendsOnlyLatest() {
+        val sent = mutableListOf<Int>()
+        val queued = ArrayDeque<() -> Unit>()
+        val mailbox =
+            GazeLatestSend<Int>(
+                deliver = {
+                    sent += it
+                    true
+                },
+                execute = { queued.add(it) },
+            )
+        mailbox.offer(1)
+        mailbox.offer(2)
+        mailbox.offer(3)
+        assertEquals(2, mailbox.dropCount)
+        assertTrue(mailbox.hasPending)
+        queued.removeFirst().invoke()
+        assertEquals(listOf(3), sent)
+        assertEquals(1, mailbox.sentCount)
+        assertFalse(mailbox.hasPending)
+        assertFalse(mailbox.busy)
+    }
+
+    @Test
+    fun inFlightSendSkipsNewFramesUntilItCompletesThenSendsLatest() {
+        val started = CountDownLatch(1)
+        val release = CountDownLatch(1)
+        val sent = CopyOnWriteArrayList<Int>()
+        val mailbox =
+            GazeLatestSend<Int>(
+                deliver = {
+                    started.countDown()
+                    assertTrue(release.await(2, TimeUnit.SECONDS))
+                    sent += it
+                    true
+                },
+                execute = { task ->
+                    Thread(task, "gaze-latest-send-test").apply {
+                        isDaemon = true
+                        start()
+                    }
+                },
+            )
+        mailbox.offer(1)
+        assertTrue(started.await(1, TimeUnit.SECONDS))
+        mailbox.offer(2)
+        mailbox.offer(3)
+        release.countDown()
+        val done = CountDownLatch(1)
+        Thread {
+            while (mailbox.busy || mailbox.hasPending) {
+                Thread.sleep(5)
+            }
+            done.countDown()
+        }.start()
+        assertTrue(done.await(2, TimeUnit.SECONDS))
+        assertEquals(3, sent.last())
+        assertFalse(sent.contains(2))
+        assertTrue(mailbox.dropCount >= 1)
+        assertTrue(sent.size <= 2)
     }
 }
 
@@ -412,6 +643,8 @@ class GazeHevcPathSafetyTest {
                 "DatViewModel.kt",
                 "GazeWs.kt",
                 "GazeWsServer.kt",
+                "GazeYuvScale.kt",
+                "GazeLatestSend.kt",
             )
         watched.forEach { name ->
             val text = java.io.File(root, name).readText()
@@ -494,6 +727,87 @@ class GazeWsServerLoopbackTest {
         }
     }
 
+    @Test
+    fun broadcastFrameDoesNotBlockOnASlowClientAndDropsStale() {
+        val server = GazeWsServer(host = "127.0.0.1", port = 0)
+        assertTrue(server.start())
+        try {
+            Socket("127.0.0.1", server.localPort).use { socket ->
+                socket.tcpNoDelay = true
+                socket.getOutputStream().write(
+                    upgradeRequest("/frames", "dGhlIHNhbXBsZSBub25jZQ==").toByteArray(Charsets.US_ASCII),
+                )
+                socket.getOutputStream().flush()
+                val head = GazeWsHandshake.readHead(socket.getInputStream())
+                assertTrue(head!!.startsWith("HTTP/1.1 101"))
+
+                val wait = CountDownLatch(1)
+                Thread {
+                    while (server.clientCount == 0) {
+                        Thread.sleep(5)
+                    }
+                    wait.countDown()
+                }.start()
+                assertTrue(wait.await(1, TimeUnit.SECONDS))
+
+                val started = System.nanoTime()
+                repeat(40) { idx ->
+                    server.broadcastFrame(
+                        """{"ts_ms":$idx,"w":8,"h":6}""",
+                        ByteArray(48_000) { idx.toByte() },
+                    )
+                }
+                val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+                assertTrue("broadcastFrame must not block the pump ($elapsedMs ms)", elapsedMs < 750)
+                assertTrue(server.listening)
+                assertEquals(1, server.clientCount)
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
+    fun broadcastsPairedMetaThenJpegViaLatestWinsMailbox() {
+        val server = GazeWsServer(host = "127.0.0.1", port = 0)
+        assertTrue(server.start())
+        try {
+            Socket("127.0.0.1", server.localPort).use { socket ->
+                socket.tcpNoDelay = true
+                socket.getOutputStream().write(
+                    upgradeRequest("/frames", "dGhlIHNhbXBsZSBub25jZQ==").toByteArray(Charsets.US_ASCII),
+                )
+                socket.getOutputStream().flush()
+                val head = GazeWsHandshake.readHead(socket.getInputStream())
+                assertTrue(head!!.startsWith("HTTP/1.1 101"))
+
+                val wait = CountDownLatch(1)
+                Thread {
+                    while (server.clientCount == 0) {
+                        Thread.sleep(5)
+                    }
+                    wait.countDown()
+                }.start()
+                assertTrue(wait.await(1, TimeUnit.SECONDS))
+
+                server.broadcastFrame(
+                    GazeFrameMeta(tsMs = 7L, w = 640, h = 360).json(),
+                    byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0x01),
+                )
+
+                socket.soTimeout = 1_500
+                val text = GazeWsFrames.read(socket.getInputStream())
+                assertEquals(GazeWsFrames.OP_TEXT, text!!.opcode)
+                assertEquals("""{"ts_ms":7,"w":640,"h":360}""", String(text.payload, Charsets.UTF_8))
+                val bin = GazeWsFrames.read(socket.getInputStream())
+                assertEquals(GazeWsFrames.OP_BINARY, bin!!.opcode)
+                assertTrue(bin.payload.contentEquals(byteArrayOf(0xFF.toByte(), 0xD8.toByte(), 0x01)))
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
     private fun rawUpgrade(
         port: Int,
         path: String,
@@ -551,5 +865,10 @@ private class FakeHub : GazeSocketHub {
 
     override fun broadcastBinary(bytes: ByteArray) {
         binaries += bytes
+    }
+
+    override fun broadcastFrame(text: String, jpeg: ByteArray) {
+        broadcastText(text)
+        broadcastBinary(jpeg)
     }
 }
