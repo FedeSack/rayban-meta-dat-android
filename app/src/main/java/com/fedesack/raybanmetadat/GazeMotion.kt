@@ -135,7 +135,7 @@ object GazeMotionFlow {
         )
     }
 
-    internal fun sadSearch(
+    fun sadSearch(
         prev: ByteArray,
         curr: ByteArray,
         width: Int,

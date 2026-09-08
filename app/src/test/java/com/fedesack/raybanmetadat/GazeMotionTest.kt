@@ -366,25 +366,27 @@ class GazeMotionBridgeTest {
                 flowWidth = 12,
                 estimate = { _, _ -> GazeFlowResult(u = 1.0, v = -0.5, confidence = 0.6) },
             )
-        val emitted = CountDownLatch(1)
-        hub.onBroadcast = { emitted.countDown() }
+        val seenMotion = CountDownLatch(1)
+        hub.onBroadcast = {
+            if (hub.motions.isNotEmpty()) seenMotion.countDown()
+        }
         val bridge =
             GazeBridge(
                 server = hub,
                 pipeline = jpeg,
                 motion = motion,
                 wifiIp = { "192.168.0.9" },
-                sleeper = { Thread.sleep(4) },
+                sleeper = { Thread.sleep(3) },
             )
         bridge.sync(flagOn = true, streamLive = true)
-        repeat(50) {
-            if (hub.motions.isNotEmpty() && hub.texts.isNotEmpty()) return@repeat
+        repeat(12) {
             bridge.submit(16, 12, compressed = false, codecConfig = false, presentationTimeUs = 1L) {
                 ByteArray(16 * 12 * 3 / 2) { 90 }
             }
             now += 40L
-            emitted.await(20, TimeUnit.MILLISECONDS)
+            if (seenMotion.await(25, TimeUnit.MILLISECONDS)) return@repeat
         }
+        assertTrue(seenMotion.await(400, TimeUnit.MILLISECONDS))
         assertTrue(hub.motions.isNotEmpty())
         val motionJson = hub.motions.first()
         assertTrue(motionJson.startsWith("""{"type":"motion""""))

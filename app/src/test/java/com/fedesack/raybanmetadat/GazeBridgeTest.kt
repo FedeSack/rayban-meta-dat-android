@@ -908,7 +908,7 @@ class GazeWsServerLoopbackTest {
             "\r\n"
 }
 
-private class FakeHub : GazeSocketHub {
+internal class FakeHub : GazeSocketHub {
     override var listening: Boolean = false
     val clients = AtomicInteger(0)
     override val clientCount: Int get() = clients.get()
