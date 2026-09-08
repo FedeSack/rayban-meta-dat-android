@@ -157,12 +157,12 @@ fun FeatureFlagsPanel(
             subtitle =
                 if (flags.gazeBridge) {
                     if (gazeListening) {
-                        "LAN JPEG relay live · ${gazeEndpoint ?: GazeWs.endpoint(null)}"
+                        "LAN JPEG + motion TEXT live · ${gazeEndpoint ?: GazeWs.endpoint(null)}"
                     } else {
-                        "LAN JPEG relay. Start the DAT stream to bind ${gazeEndpoint ?: GazeWs.endpoint(null)}"
+                        "LAN JPEG + motion TEXT. Start the DAT stream to bind ${gazeEndpoint ?: GazeWs.endpoint(null)}"
                     }
                 } else {
-                    "LAN JPEG relay to the Windows sidecar. On = uncompressed YUV (more BT bandwidth)."
+                    "LAN JPEG + optical-flow TEXT to the Windows sidecar. On = uncompressed YUV (more BT bandwidth)."
                 },
             checked = flags.gazeBridge,
             onCheckedChange = { onFlagChange(FeatureFlag.GAZE_BRIDGE, it) },

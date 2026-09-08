@@ -69,7 +69,10 @@ Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayb
 - Si el stream está live, cambiar quality/fps hace stop+restart limpio. Si no hay sesión STARTED, el mensaje es **Stop and Start to apply**.
 - `analyticsOverlay` — muestra el panel de stats (tap en el HUD para expandir). Default off.
 - `verboseLogcat` — líneas extra `RaybanDat/Analytics`. Default off.
-- `gazeBridge` — off. Relay LAN de frames JPEG para el sidecar Windows (cursor glasses→PC). Si el flag está **on** y el DAT stream está live, un WebSocket escucha `0.0.0.0:8765` en **`/frames`**. Features muestra `ws://<wifi-ip>:8765/frames`. Mensajes de texto `{"ts_ms":number,"w":number,"h":number}` y binarios JPEG (~12 fps, quality 45, max width 640; latest-wins, sin backlog). Se apaga con el flag o al Stop. **`streamConfig()` fuerza `compressVideo=false`** (YUV sin comprimir) para que el pipeline JPEG tenga frames; el preview usa `DecodePath.YUV` (ya existía). Con el flag off el default sigue siendo HEVC (`compressVideo=true`) salvo el perfil propio de `murdokuHqCapture`. Tradeoff: más ancho de banda Bluetooth a cambio de frames para calib. Sin auth ni secrets. `voiceAssist` sigue stub.
+- `gazeBridge` — off. Relay LAN para el sidecar Windows (cursor glasses→PC). Si el flag está **on** y el DAT stream está live, un WebSocket escucha `0.0.0.0:8765` en **`/frames`** (no `/motion`). Features muestra `ws://<wifi-ip>:8765/frames`. En el mismo socket:
+  - TEXT motion (optical-flow on-device, ~20–30 Hz, latest-wins): `{"type":"motion","dx":n,"dy":n,"dt_ms":n,"ts_ms":n,"c":n}` con `dx`/`dy` en espacio ~480w (x+ derecha, y+ abajo) y `c` 0..1. Campos extra de Perf `emit_ms` / `drops` al final; no reemplazan el schema. Windows mueve el mouse con esto, sin esperar el JPEG.
+  - TEXT meta `{"ts_ms":number,"w":number,"h":number}` + binario JPEG (~12 fps, quality 45, max width 640; latest-wins) para preview.
+  Se apaga con el flag o al Stop. **`streamConfig()` fuerza `compressVideo=false`** (YUV sin comprimir). Sin encoder MediaCodec HW en este path. El preview usa `DecodePath.YUV`. Con el flag off el default sigue siendo HEVC (`compressVideo=true`) salvo el perfil propio de `murdokuHqCapture`. Tradeoff: más ancho de banda Bluetooth a cambio de frames YUV. Sin auth ni secrets. `voiceAssist` sigue stub.
 - `voiceDevMode` — off. Cuando está on, los intents encolados se POSTean como JSON a una URL de webhook (campo en Features, persistido en los mismos prefs). La cola `IntentQueue` es in-memory. Smoke sin STT: Features → utterance + **Enqueue chat** (`source=chat`). **No hay wake word de Meta**; este es el path Dev hacia nuestro agente de código. Astra / secrets / APK install quedan fuera.
 
 ## Intent queue (path Dev)
@@ -140,7 +143,7 @@ El scheme de callback es `raybanmetadat`. Meta AI vuelve a la app por ese scheme
 
 ## Layout
 
-`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags, la galería Murdoku, el wizard (`MurdokuWizardState`) y el endpoint Gaze LAN. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica el preview. `GazeBridge` + `GazeWsServer` retransmiten JPEG por `ws://<wifi-ip>:8765/frames` si `gazeBridge` está on. `Latency`, `StreamSessionAnalytics`, `BoardCaptureMath` y `MurdokuWizardMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
+`AppState` junta `Phase` (CONNECT / LIVE) con las dos máquinas del SDK, el snapshot de analíticas, los feature flags, la galería Murdoku, el wizard (`MurdokuWizardState`) y el endpoint Gaze LAN. `DatViewModel` es el único dueño de `DeviceSession` y `Camera.stream`. `FrameSink` decodifica el preview. `GazeBridge` + `GazeWsServer` retransmiten JPEG y TEXT motion por `ws://<wifi-ip>:8765/frames` si `gazeBridge` está on. `GazeMotionFlow` estima deltas translacionales sobre luma. `Latency`, `StreamSessionAnalytics`, `BoardCaptureMath` y `MurdokuWizardMath` son cuentas puras (tienen tests). `IntentQueue` + `IntentEgress` son el path Dev (tests de cola, JSON y “POST solo si voiceDevMode”).
 
 ## Docs
 

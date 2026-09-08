@@ -74,9 +74,10 @@ data class FeatureFlags(
         }
 
     fun streamConfig(): StreamCaptureConfig {
-        // Gaze JPEG relay is YUV-only (HEVC ImageReader side-decode was removed).
-        // Request uncompressed DAT frames so /frames can emit JPEG+meta.
+        // Gaze JPEG + motion TEXT are YUV-only (HEVC ImageReader side-decode was removed).
+        // Request uncompressed DAT frames so /frames can emit JPEG+meta and optical-flow.
         // Tradeoff: more Bluetooth bandwidth while gazeBridge is on.
+        // Do not add a MediaCodec HW encoder on this path (FPS collapse).
         val compressVideo = !gazeBridge
         return if (murdokuHqCapture) {
             StreamCaptureConfig(

@@ -30,6 +30,9 @@ class GazeMetaTest {
         assertEquals("/frames", GazeWs.PATH)
         assertEquals(8765, GazeWs.PORT)
         assertFalse(GazeWs.PATH.contains("gaze"))
+        assertFalse(GazeWs.PATH.contains("motion"))
+        assertEquals(24, GazeWs.MOTION_TARGET_FPS)
+        assertEquals(41L, GazeWs.MOTION_INTERVAL_MS)
     }
 }
 
@@ -645,6 +648,8 @@ class GazeHevcPathSafetyTest {
                 "GazeWsServer.kt",
                 "GazeYuvScale.kt",
                 "GazeLatestSend.kt",
+                "GazeMotion.kt",
+                "GazeMotionPipeline.kt",
             )
         watched.forEach { name ->
             val text = java.io.File(root, name).readText()
@@ -653,6 +658,7 @@ class GazeHevcPathSafetyTest {
             assertFalse("$name must not construct ImageReader", text.contains("ImageReader.newInstance"))
             assertFalse("$name must not call imageToNv21", text.contains("imageToNv21"))
             assertFalse("$name must not construct GazeHevcDecoder", text.contains("GazeHevcDecoder("))
+            assertFalse("$name must not construct MediaCodec", text.contains("MediaCodec.create"))
         }
         val yuv = java.io.File(root, "YuvJpeg.kt").readText()
         assertTrue(yuv.contains("direct Image planes are unsafe"))
@@ -768,6 +774,76 @@ class GazeWsServerLoopbackTest {
     }
 
     @Test
+    fun broadcastMotionIsTextOnFramesAndDoesNotBlock() {
+        val server = GazeWsServer(host = "127.0.0.1", port = 0)
+        assertTrue(server.start())
+        try {
+            Socket("127.0.0.1", server.localPort).use { socket ->
+                socket.tcpNoDelay = true
+                socket.getOutputStream().write(
+                    upgradeRequest("/frames", "dGhlIHNhbXBsZSBub25jZQ==").toByteArray(Charsets.US_ASCII),
+                )
+                socket.getOutputStream().flush()
+                val head = GazeWsHandshake.readHead(socket.getInputStream())
+                assertTrue(head!!.startsWith("HTTP/1.1 101"))
+
+                val wait = CountDownLatch(1)
+                Thread {
+                    while (server.clientCount == 0) {
+                        Thread.sleep(5)
+                    }
+                    wait.countDown()
+                }.start()
+                assertTrue(wait.await(1, TimeUnit.SECONDS))
+
+                val started = System.nanoTime()
+                repeat(40) { idx ->
+                    server.broadcastMotion(
+                        GazeMotionDelta(
+                            dx = idx.toDouble(),
+                            dy = 0.0,
+                            dtMs = 41,
+                            tsMs = idx.toLong(),
+                            c = 0.5,
+                            emitMs = idx.toLong(),
+                            drops = 0,
+                        ).json(),
+                    )
+                }
+                val elapsedMs = TimeUnit.NANOSECONDS.toMillis(System.nanoTime() - started)
+                assertTrue("broadcastMotion must not block the pump ($elapsedMs ms)", elapsedMs < 750)
+
+                server.broadcastMotion(
+                    GazeMotionDelta(
+                        dx = 1.25,
+                        dy = -2.0,
+                        dtMs = 41,
+                        tsMs = 99,
+                        c = 0.9,
+                        emitMs = 100,
+                        drops = 1,
+                    ).json(),
+                )
+                socket.soTimeout = 1_500
+                var found: String? = null
+                repeat(8) {
+                    val frame = GazeWsFrames.read(socket.getInputStream()) ?: return@repeat
+                    if (frame.opcode == GazeWsFrames.OP_TEXT) {
+                        val text = String(frame.payload, Charsets.UTF_8)
+                        if (text.contains("\"type\":\"motion\"")) found = text
+                    }
+                }
+                assertNotNull(found)
+                assertTrue(found!!.startsWith("""{"type":"motion""""))
+                assertTrue(found!!.contains("\"dx\":"))
+                assertTrue(found!!.contains("\"emit_ms\":"))
+            }
+        } finally {
+            server.stop()
+        }
+    }
+
+    @Test
     fun broadcastsPairedMetaThenJpegViaLatestWinsMailbox() {
         val server = GazeWsServer(host = "127.0.0.1", port = 0)
         assertTrue(server.start())
@@ -842,6 +918,7 @@ private class FakeHub : GazeSocketHub {
     var stopped = false
     val texts = CopyOnWriteArrayList<String>()
     val binaries = CopyOnWriteArrayList<ByteArray>()
+    val motions = CopyOnWriteArrayList<String>()
     var onBroadcast: (() -> Unit)? = null
     private val running = AtomicBoolean(false)
 
@@ -870,5 +947,10 @@ private class FakeHub : GazeSocketHub {
     override fun broadcastFrame(text: String, jpeg: ByteArray) {
         broadcastText(text)
         broadcastBinary(jpeg)
+    }
+
+    override fun broadcastMotion(text: String) {
+        motions += text
+        onBroadcast?.invoke()
     }
 }
