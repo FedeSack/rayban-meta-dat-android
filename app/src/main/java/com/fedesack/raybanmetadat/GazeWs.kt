@@ -7,12 +7,14 @@ object GazeWs {
     const val BIND_HOST = "0.0.0.0"
     const val PORT = 8765
     const val PATH = "/frames"
-    const val JPEG_QUALITY = 70
+    const val JPEG_QUALITY = 45
     const val TARGET_FPS = 12
-    const val MAX_FPS = 15
+    const val MAX_FPS = 12
+    const val MAX_JPEG_WIDTH = 640
     const val TARGET_INTERVAL_MS = 1000L / TARGET_FPS
     const val MIN_INTERVAL_MS = 1000L / MAX_FPS
     const val PUMP_SLEEP_MS = 10L
+    const val SEND_BUFFER_BYTES = 64 * 1024
     const val GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
 
     fun endpoint(ip: String?): String = "ws://${ip ?: "<wifi-ip>"}:$PORT$PATH"
