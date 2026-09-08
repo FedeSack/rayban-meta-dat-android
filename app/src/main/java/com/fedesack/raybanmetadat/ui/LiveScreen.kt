@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -59,29 +60,12 @@ fun LiveScreen(
     onIntentWebhookUrlChange: (String) -> Unit,
     onEnqueueChat: (String) -> Unit,
 ) {
-    var showFlags by remember { mutableStateOf(false) }
     var analyticsExpanded by remember { mutableStateOf(false) }
-    BackHandler {
-        if (showFlags) {
-            showFlags = false
-        } else {
-            onBack()
-        }
-    }
+    BackHandler { onBack() }
     val streaming = state.stream == StreamState.STREAMING || state.stream == StreamState.STARTING
     val waking = state.awaitingFirstFrame && !state.hasFrame && state.message == null
     val murdoku = state.flags.murdokuHqCapture
     val wizard = state.wizard.takeIf { murdoku }
-    val chromeBottom =
-        when {
-            wizard != null ->
-                DatTokens.wizardCardH + DatTokens.murdokuCtaH + DatTokens.buttonH +
-                    DatTokens.buttonGap * 3 + DatTokens.ctaBottom
-            murdoku ->
-                DatTokens.murdokuCtaH + DatTokens.buttonH + DatTokens.buttonGap * 2 +
-                    DatTokens.ctaBottom + DatTokens.galleryH
-            else -> DatTokens.buttonH + DatTokens.ctaBottom + DatTokens.buttonGap
-        }
     Box(
         modifier =
             Modifier
@@ -148,17 +132,22 @@ fun LiveScreen(
                         .padding(top = DatTokens.hudGap),
             )
         }
-        FeaturesToggle(
-            open = showFlags,
-            onClick = { showFlags = !showFlags },
+        Column(
             modifier =
                 Modifier
-                    .align(Alignment.TopEnd)
-                    .statusBarsPadding()
-                    .padding(end = DatTokens.pagePad, top = DatTokens.hudGap),
-        )
-        if (showFlags) {
-            FeatureFlagsPanel(
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .navigationBarsPadding()
+                    .imePadding()
+                    .padding(
+                        start = DatTokens.pagePad,
+                        end = DatTokens.pagePad,
+                        bottom = DatTokens.ctaBottom,
+                    ),
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.spacedBy(DatTokens.buttonGap),
+        ) {
+            FeatureFlagsOverlay(
                 flags = state.flags,
                 live = streaming || waking,
                 onFlagChange = onFlagChange,
@@ -171,44 +160,16 @@ fun LiveScreen(
                 onEnqueueChat = onEnqueueChat,
                 gazeEndpoint = state.gazeEndpoint,
                 gazeListening = state.gazeListening,
-                modifier =
-                    Modifier
-                        .align(Alignment.TopEnd)
-                        .statusBarsPadding()
-                        .padding(end = DatTokens.pagePad, top = 48.dp),
+                compact = murdoku,
             )
-        }
-        state.message?.let {
-            Text(
-                text = it,
-                color = DatTokens.danger,
-                style = MaterialTheme.typography.labelMedium,
-                modifier =
-                    Modifier
-                        .align(Alignment.BottomCenter)
-                        .navigationBarsPadding()
-                        .padding(
-                            start = DatTokens.pagePad,
-                            end = DatTokens.pagePad,
-                            bottom = chromeBottom,
-                        ),
-                textAlign = TextAlign.Center,
-            )
-        }
-        Column(
-            modifier =
-                Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .navigationBarsPadding()
-                    .padding(
-                        start = DatTokens.pagePad,
-                        end = DatTokens.pagePad,
-                        bottom = DatTokens.ctaBottom,
-                    ),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.spacedBy(DatTokens.buttonGap),
-        ) {
+            state.message?.let {
+                Text(
+                    text = it,
+                    color = DatTokens.danger,
+                    style = MaterialTheme.typography.labelMedium,
+                    textAlign = TextAlign.Center,
+                )
+            }
             if (wizard != null) {
                 MurdokuWizardCard(
                     wizard = wizard,

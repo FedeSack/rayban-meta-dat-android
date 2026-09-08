@@ -11,7 +11,7 @@ Solo el SDK oficial. No hay cámara web inventada ni scraping de Meta AI. Una PW
 Dos pantallas, oscuras y con poco chrome.
 
 1. **Conectar / registrar.** Registro con Meta AI, o Mock Device Kit sin hardware.
-2. **Preview.** Surface de frames a pantalla completa. El chrome (HUD, Features, Start/Stop) respeta `WindowInsets` (`statusBars` + `navigationBars` + cutout). Entre Start y el primer frame hay overlay **Encendiendo cámara…**. HUD compacto `N ms` (caption `pipeline` cuando aplica). El panel de analíticas y el de Features se encienden a mano.
+2. **Preview.** Surface de frames a pantalla completa. El chrome (HUD, Features, Start/Stop) respeta `WindowInsets` (`statusBars` + `navigationBars` + cutout). Entre Start y el primer frame hay overlay **Encendiendo cámara…**. HUD compacto `N ms` (caption `pipeline` cuando aplica). El panel de analíticas se enciende a mano. Features en Live es un overlay compacto al pie del preview.
 
 El dominio es el del SDK. `DeviceSessionState` es la sesión. `StreamState` es el stream. La app no remapea esas máquinas de estados. El stream lee `videoQuality` / `frameRate` de los feature flags (default `VideoQuality.HIGH` 720×1280 a 24 fps, `compressVideo = true`). El panel Features permite A/B HIGH|MEDIUM|LOW y 15|24|30 sin rebuild. El API acepta 2, 7, 15, 24 o 30; la UI solo expone 15/24/30.
 
@@ -60,7 +60,7 @@ Al Stop se loguea un summary (ring buffer de 128 eventos). `verboseLogcat` agreg
 
 ## Feature flags
 
-Botón **Features** en Connect y Live. Persistidos en `SharedPreferences` (`rayban_dat_flags`).
+Botón **Features** en Connect. En Live, overlay al pie del preview. Persistidos en `SharedPreferences` (`rayban_dat_flags`).
 
 - `videoQuality` — `HIGH` (default) / `MEDIUM` / `LOW`. Se pasa a `StreamConfiguration.videoQuality`.
 - `frameRate` — `15` / `24` (default) / `30`. Se pasa a `StreamConfiguration.frameRate`.
