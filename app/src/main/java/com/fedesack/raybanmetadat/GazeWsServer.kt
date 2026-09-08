@@ -25,6 +25,8 @@ interface GazeSocketHub {
     fun broadcastBinary(bytes: ByteArray)
 
     fun broadcastFrame(text: String, jpeg: ByteArray)
+
+    fun broadcastMotion(text: String)
 }
 
 class GazeWsServer(
@@ -93,6 +95,11 @@ class GazeWsServer(
         System.arraycopy(meta, 0, combined, 0, meta.size)
         System.arraycopy(bin, 0, combined, meta.size, bin.size)
         clients.forEach { it.offer(combined) }
+    }
+
+    override fun broadcastMotion(text: String) {
+        val frame = GazeWsFrames.encodeText(text)
+        clients.forEach { it.offerMotion(frame) }
     }
 
     private fun broadcast(frame: ByteArray) {
@@ -188,9 +195,28 @@ class GazeWsServer(
                     }
                 },
             )
+        private val motionMailbox =
+            GazeLatestSend<ByteArray>(
+                deliver = { frame ->
+                    val ok = writeLocked(frame)
+                    if (!ok) detach()
+                    ok
+                },
+                execute = { task ->
+                    try {
+                        writers.execute(task)
+                    } catch (_: RejectedExecutionException) {
+                        throw RejectedExecutionException("gaze-ws-send closed")
+                    }
+                },
+            )
 
         fun offer(frame: ByteArray) {
             mailbox.offer(frame)
+        }
+
+        fun offerMotion(frame: ByteArray) {
+            motionMailbox.offer(frame)
         }
 
         fun send(frame: ByteArray): Boolean = writeLocked(frame)
@@ -208,6 +234,7 @@ class GazeWsServer(
 
         fun close() {
             mailbox.clear()
+            motionMailbox.clear()
             runCatching { socket.close() }
         }
 

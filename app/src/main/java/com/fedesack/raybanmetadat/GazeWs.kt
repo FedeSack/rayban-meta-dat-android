@@ -13,6 +13,8 @@ object GazeWs {
     const val MAX_JPEG_WIDTH = 640
     const val TARGET_INTERVAL_MS = 1000L / TARGET_FPS
     const val MIN_INTERVAL_MS = 1000L / MAX_FPS
+    const val MOTION_TARGET_FPS = GazeMotion.TARGET_FPS
+    const val MOTION_INTERVAL_MS = GazeMotion.TARGET_INTERVAL_MS
     const val PUMP_SLEEP_MS = 10L
     const val SEND_BUFFER_BYTES = 64 * 1024
     const val GUID = "258EAFA5-E914-47DA-95CA-C5AB0DC85B11"
