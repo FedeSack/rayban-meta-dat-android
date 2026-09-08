@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -200,6 +201,150 @@ fun FeatureFlagsPanel(
             )
         }
     }
+}
+
+internal val FeatureOverlayFlags =
+    listOf(
+        FeatureFlag.MURDOKU_HQ_CAPTURE to "Murdoku",
+        FeatureFlag.PREFER_SHARPNESS to "Sharp",
+        FeatureFlag.ANALYTICS_OVERLAY to "Stats",
+        FeatureFlag.VERBOSE_LOGCAT to "Log",
+        FeatureFlag.GAZE_BRIDGE to "Gaze",
+        FeatureFlag.VOICE_ASSIST to "Voice",
+        FeatureFlag.VOICE_DEV_MODE to "Dev",
+    )
+
+@Composable
+fun FeatureFlagsOverlay(
+    flags: FeatureFlags,
+    onFlagChange: (FeatureFlag, Boolean) -> Unit,
+    onVideoQualityChange: (VideoQualityFlag) -> Unit,
+    onFrameRateChange: (FrameRateFlag) -> Unit,
+    live: Boolean = false,
+    intentWebhookUrl: String = "",
+    lastIntentStatus: String? = null,
+    queuedIntentCount: Int = 0,
+    onIntentWebhookUrlChange: (String) -> Unit = {},
+    onEnqueueChat: (String) -> Unit = {},
+    gazeEndpoint: String? = null,
+    gazeListening: Boolean = false,
+    compact: Boolean = false,
+    modifier: Modifier = Modifier,
+) {
+    Column(
+        modifier =
+            modifier
+                .fillMaxWidth()
+                .background(DatTokens.panel, RoundedCornerShape(DatTokens.buttonRadius))
+                .padding(horizontal = 14.dp, vertical = 10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+            itemVerticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(
+                text = "Features",
+                style = MaterialTheme.typography.labelMedium,
+                modifier = Modifier.padding(end = 4.dp),
+            )
+            VideoQualityFlag.entries.forEach { option ->
+                OverlayChip(
+                    label = if (option == VideoQualityFlag.MEDIUM) "MED" else option.name,
+                    selected = option == flags.videoQuality,
+                    onClick = { onVideoQualityChange(option) },
+                )
+            }
+            Text(
+                text = "fps",
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        color = DatTokens.muted,
+                        fontSize = 11.sp,
+                    ),
+                modifier = Modifier.padding(start = 4.dp),
+            )
+            FrameRateFlag.entries.forEach { option ->
+                OverlayChip(
+                    label = option.fps.toString(),
+                    selected = option == flags.frameRate,
+                    onClick = { onFrameRateChange(option) },
+                )
+            }
+        }
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp),
+        ) {
+            FeatureOverlayFlags.forEach { (flag, label) ->
+                OverlayChip(
+                    label = label,
+                    selected = flags.enabled(flag),
+                    onClick = { onFlagChange(flag, !flags.enabled(flag)) },
+                )
+            }
+        }
+        if (!compact) {
+            Text(
+                text =
+                    if (live) {
+                        "Live changes stop and restart the stream."
+                    } else {
+                        "Applied on Start."
+                    },
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        color = DatTokens.muted,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                    ),
+            )
+        }
+        if (flags.gazeBridge) {
+            val endpoint = gazeEndpoint ?: GazeWs.endpoint(null)
+            Text(
+                text = if (gazeListening) "$endpoint · live" else endpoint,
+                style =
+                    MaterialTheme.typography.labelMedium.copy(
+                        color = DatTokens.white,
+                        fontSize = 11.sp,
+                        lineHeight = 14.sp,
+                    ),
+            )
+        }
+        if (flags.voiceDevMode) {
+            ChatStubSection(
+                webhookUrl = intentWebhookUrl,
+                lastStatus = lastIntentStatus,
+                queuedCount = queuedIntentCount,
+                onWebhookUrlChange = onIntentWebhookUrlChange,
+                onEnqueueChat = onEnqueueChat,
+            )
+        }
+    }
+}
+
+@Composable
+private fun OverlayChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit,
+) {
+    Text(
+        text = label,
+        style = MaterialTheme.typography.labelMedium,
+        modifier =
+            Modifier
+                .background(
+                    if (selected) DatTokens.accent else DatTokens.surface,
+                    RoundedCornerShape(8.dp),
+                )
+                .clickable(onClick = onClick)
+                .padding(horizontal = 10.dp, vertical = 6.dp),
+    )
 }
 
 @Composable

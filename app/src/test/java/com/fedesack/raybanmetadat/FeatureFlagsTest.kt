@@ -1,5 +1,6 @@
 package com.fedesack.raybanmetadat
 
+import com.fedesack.raybanmetadat.ui.FeatureOverlayFlags
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -275,6 +276,15 @@ class FeatureFlagsTest {
         assertEquals(30, off.streamConfig().fps)
         assertEquals("LOW", off.streamConfig().qualityName)
         assertFalse(off.streamConfig().murdokuHq)
+    }
+
+    @Test
+    fun liveOverlayChipsCoverEveryFeatureFlag() {
+        assertEquals(
+            FeatureFlag.entries.toSet(),
+            FeatureOverlayFlags.map { it.first }.toSet(),
+        )
+        assertEquals(FeatureFlag.entries.size, FeatureOverlayFlags.size)
     }
 
     @Test
